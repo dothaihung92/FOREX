@@ -50,6 +50,8 @@ class RiskManager:
 
     def can_open_trade(self, current_day: date, open_positions: int) -> tuple[bool, str]:
         self.daily.reset_if_new_day(current_day)
+        if self.equity <= 0:
+            return False, "equity depleted"
         if open_positions >= self.cfg.max_concurrent_trades:
             return False, "max_concurrent_trades reached"
         if self.daily.trades_opened >= self.cfg.max_trades_per_day:

@@ -41,6 +41,22 @@ def test_max_trades_per_day_blocks_further_trades():
     assert "max_trades_per_day" in reason
 
 
+def test_depleted_equity_blocks_trading():
+    mgr = make_manager(equity=0.0)
+    today = date(2024, 1, 1)
+    can_open, reason = mgr.can_open_trade(today, open_positions=0)
+    assert can_open is False
+    assert "equity depleted" in reason
+
+
+def test_negative_equity_blocks_trading():
+    mgr = make_manager(equity=-50.0)
+    today = date(2024, 1, 1)
+    can_open, reason = mgr.can_open_trade(today, open_positions=0)
+    assert can_open is False
+    assert "equity depleted" in reason
+
+
 def test_daily_loss_limit_blocks_trading():
     mgr = make_manager(equity=10000.0)
     today = date(2024, 1, 1)

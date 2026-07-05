@@ -85,6 +85,43 @@ config is the best point found after this search - "just add another
 indicator" is not a free lever here, each addition needs the same
 real-data backtest scrutiny before being trusted.
 
+### Other "pro trader" price-action methods - all tested, all worse
+
+Tested several well-known gold day-trading price-action methods
+standalone on the real 5-year dataset, using the same ATR-based
+stop/target/trailing risk management as the main strategy for a fair
+comparison (not merged into the codebase - all lost badly):
+
+| Method | Profit factor | 5yr result |
+|---|---|---|
+| Current strategy (baseline) | 1.45 | +61.62% |
+| Opening Range Breakout (London, 07:00-07:25 UTC) | 0.62 | account wiped out |
+| ORB + HTF trend filter | 0.64 | account wiped out |
+| Previous-day high/low breakout (continuation) | 0.76 | account wiped out |
+| PDH/PDL breakout + HTF trend filter | 0.69 | account wiped out |
+| PDH/PDL fade (reversal) | 0.84 | account wiped out |
+| Liquidity sweep / stop-hunt reversal (20-bar swing) | 0.80 | account wiped out |
+| Liquidity sweep + HTF trend filter | 0.77 | account wiped out |
+| VWAP bounce (daily-anchored) | 0.74 | account wiped out |
+
+Adding the same HTF-trend filter used by the main strategy to ORB,
+liquidity-sweep, and PDH/PDL breakout did not rescue any of them (profit
+factor stayed under 1). This is a useful negative result: it shows the
+edge in this codebase isn't just "have a trend filter," it's the specific
+combination already tuned here (RSI shallow-pullback entry + MACD
+momentum confirmation + wide ATR stop + tight ATR trailing + session
+filter). Swapping in a different, individually-reputable entry pattern
+while keeping everything else the same does not transfer that edge.
+
+While stress-testing these (all of them lose fast enough to draw the
+account toward zero), a real gap was found and fixed in
+`gold_bot/risk_manager.py`: `RiskManager.can_open_trade` did not check for
+depleted/negative equity, so a sufficiently bad strategy under
+`equity_step` sizing (which floors at `min_lot` regardless of equity)
+could keep opening new trades even after the account was wiped out,
+never converging to a stop. It now refuses to open any new trade once
+equity reaches zero or below.
+
 ## Risk management
 
 `gold_bot/risk_manager.py` centralizes every risk rule so backtest and live
