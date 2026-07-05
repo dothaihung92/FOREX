@@ -22,14 +22,22 @@ from gold_bot.backtester import run_backtest
 from gold_bot.config import load_config
 from gold_bot.strategy import generate_signals
 
-GRID = {
-    "ema_slow": [100, 200],
-    "rsi_pullback_level": [40, 45, 50],
-    "atr_sl_mult": [1.0, 1.5, 2.0],
-    "atr_tp_mult": [2.0, 3.0, 4.0],
+STRATEGY_GRID = {
+    "atr_sl_mult": [2.0],
+    "atr_tp_mult": [2.5, 3.0, 3.5],
+    "rsi_pullback_level": [45, 50, 55],
+    "rsi_oversold": [25, 30],
+}
+
+RISK_GRID = {
+    "trailing_atr_mult": [1.0, 1.2, 1.5],
 }
 
 MIN_TRADES = 40  # discard combos with too few trades to trust the stats
+
+
+def rsi_overbought_for(oversold: float) -> float:
+    return 100 - oversold
 
 
 def load_ohlc_csv(path: str) -> pd.DataFrame:
@@ -51,6 +59,12 @@ def main():
     parser.add_argument("--config", default="config/config.yaml")
     parser.add_argument("--split", required=True, help="ISO date splitting train/test, e.g. 2023-08-01")
     parser.add_argument("--top", type=int, default=8)
+    parser.add_argument(
+        "--rank-by",
+        choices=["profit_factor", "win_rate_pct"],
+        default="profit_factor",
+        help="Metric to rank TRAIN results by before validating on TEST",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -61,33 +75,42 @@ def main():
     print(f"Train: {len(train)} bars ({train.index.min()} -> {train.index.max()})")
     print(f"Test:  {len(test)} bars ({test.index.min()} -> {test.index.max()})")
 
-    keys = list(GRID.keys())
-    combos = list(itertools.product(*GRID.values()))
-    print(f"Grid search: {len(combos)} combinations on train split...\n")
+    strat_keys = list(STRATEGY_GRID.keys())
+    risk_keys = list(RISK_GRID.keys())
+    combos = list(itertools.product(*STRATEGY_GRID.values(), *RISK_GRID.values()))
+    print(f"Grid search: {len(combos)} combinations on train split (ranking by {args.rank_by})...\n")
 
     results = []
     for i, values in enumerate(combos, 1):
-        overrides = dict(zip(keys, values))
-        strategy_cfg = replace(cfg.strategy, **overrides)
-        summary = evaluate(train, strategy_cfg, cfg.risk, cfg.backtest)
-        summary["params"] = overrides
+        strat_values, risk_values = values[: len(strat_keys)], values[len(strat_keys) :]
+        strat_overrides = dict(zip(strat_keys, strat_values))
+        risk_overrides = dict(zip(risk_keys, risk_values))
+        strat_overrides["rsi_overbought"] = rsi_overbought_for(strat_overrides["rsi_oversold"])
+
+        strategy_cfg = replace(cfg.strategy, **strat_overrides)
+        risk_cfg = replace(cfg.risk, **risk_overrides)
+        summary = evaluate(train, strategy_cfg, risk_cfg, cfg.backtest)
+        summary["strat_params"] = strat_overrides
+        summary["risk_params"] = risk_overrides
         results.append(summary)
-        print(f"[{i}/{len(combos)}] {overrides} -> trades={summary['trades']} "
-              f"pf={summary['profit_factor']} ret={summary['total_return_pct']}% "
-              f"dd={summary['max_drawdown_pct']}%")
+        print(f"[{i}/{len(combos)}] {strat_overrides} {risk_overrides} -> trades={summary['trades']} "
+              f"win%={summary['win_rate_pct']} pf={summary['profit_factor']} "
+              f"ret={summary['total_return_pct']}% dd={summary['max_drawdown_pct']}%")
 
     valid = [r for r in results if r["trades"] >= MIN_TRADES and isinstance(r["profit_factor"], (int, float))]
-    valid.sort(key=lambda r: r["profit_factor"], reverse=True)
+    valid.sort(key=lambda r: r[args.rank_by], reverse=True)
 
-    print(f"\nTop {args.top} on TRAIN (min {MIN_TRADES} trades), ranked by profit factor:")
+    print(f"\nTop {args.top} on TRAIN (min {MIN_TRADES} trades), ranked by {args.rank_by}:")
     for r in valid[: args.top]:
-        print(r["params"], "->", {k: r[k] for k in ["trades", "win_rate_pct", "profit_factor", "total_return_pct", "max_drawdown_pct"]})
+        print(r["strat_params"], r["risk_params"], "->",
+              {k: r[k] for k in ["trades", "win_rate_pct", "profit_factor", "total_return_pct", "max_drawdown_pct"]})
 
     print(f"\nValidating top {args.top} on held-out TEST split:")
     for r in valid[: args.top]:
-        strategy_cfg = replace(cfg.strategy, **r["params"])
-        test_summary = evaluate(test, strategy_cfg, cfg.risk, cfg.backtest)
-        print(r["params"], "TRAIN pf=", r["profit_factor"], "-> TEST", {
+        strategy_cfg = replace(cfg.strategy, **r["strat_params"])
+        risk_cfg = replace(cfg.risk, **r["risk_params"])
+        test_summary = evaluate(test, strategy_cfg, risk_cfg, cfg.backtest)
+        print(r["strat_params"], r["risk_params"], f"TRAIN {args.rank_by}=", r[args.rank_by], "-> TEST", {
             k: test_summary[k] for k in ["trades", "win_rate_pct", "profit_factor", "total_return_pct", "max_drawdown_pct"]
         })
 
