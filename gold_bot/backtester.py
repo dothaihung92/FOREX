@@ -132,9 +132,12 @@ def run_backtest(
             can_open, _ = risk_mgr.can_open_trade(day, open_positions=0)
             if signal != 0 and can_open and not pd.isna(atr_value) and atr_value > 0:
                 direction = int(signal)
+                is_mean_reversion = row.get("signal_type") == "mean_reversion"
+                sl_mult = strategy_cfg.mr_atr_sl_mult if is_mean_reversion else strategy_cfg.atr_sl_mult
+                tp_mult = strategy_cfg.mr_atr_tp_mult if is_mean_reversion else strategy_cfg.atr_tp_mult
                 entry_price = close + direction * (spread / 2 + slippage)
-                stop_loss = risk_mgr.stop_loss(entry_price, atr_value, direction, strategy_cfg.atr_sl_mult)
-                take_profit = risk_mgr.take_profit(entry_price, atr_value, direction, strategy_cfg.atr_tp_mult)
+                stop_loss = risk_mgr.stop_loss(entry_price, atr_value, direction, sl_mult)
+                take_profit = risk_mgr.take_profit(entry_price, atr_value, direction, tp_mult)
                 lots = risk_mgr.position_size_lots(entry_price, stop_loss)
                 if lots > 0:
                     open_trade = Trade(

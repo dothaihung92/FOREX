@@ -42,3 +42,40 @@ def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     signal_line = ema(macd_line, signal)
     hist = macd_line - signal_line
     return macd_line, signal_line, hist
+
+
+def bollinger_bands(series: pd.Series, period: int = 20, std_mult: float = 2.0):
+    mid = series.rolling(period).mean()
+    std = series.rolling(period).std(ddof=0)
+    upper = mid + std_mult * std
+    lower = mid - std_mult * std
+    return upper, mid, lower
+
+
+def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Wilder's Average Directional Index - measures trend strength
+    (not direction). Low ADX means the market is ranging/choppy, which is
+    exactly the regime where the trend-pullback strategy loses money and a
+    mean-reversion approach is more appropriate."""
+    high, low, close = df["high"], df["low"], df["close"]
+    prev_high, prev_low, prev_close = high.shift(1), low.shift(1), close.shift(1)
+
+    up_move = high - prev_high
+    down_move = prev_low - low
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+    tr = pd.concat(
+        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+    ).max(axis=1)
+
+    atr_wilder = tr.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    plus_di = 100 * pd.Series(plus_dm, index=df.index).ewm(
+        alpha=1 / period, adjust=False, min_periods=period
+    ).mean() / atr_wilder.replace(0, np.nan)
+    minus_di = 100 * pd.Series(minus_dm, index=df.index).ewm(
+        alpha=1 / period, adjust=False, min_periods=period
+    ).mean() / atr_wilder.replace(0, np.nan)
+
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    return dx.ewm(alpha=1 / period, adjust=False, min_periods=period).mean().fillna(0.0)

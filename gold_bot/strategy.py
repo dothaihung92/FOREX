@@ -23,6 +23,25 @@ only fires when several independent signals agree:
    real momentum.
 
 Exits use ATR-based stop loss / take profit, computed by the risk manager.
+
+Regime switch (trend vs. range)
+--------------------------------
+Backtesting on 5 years of real XAUUSD M5 data showed the trend-pullback
+rules above only make money while gold is actually trending (e.g. the
+2024-2025 rally) and lose steadily during flat/choppy stretches (e.g.
+2020-2023), because there's no real pullback-and-resume move to catch.
+
+ADX (`gold_bot.indicators.adx`) measures trend *strength* regardless of
+direction. Below `adx_threshold` the market is classified as ranging, the
+trend-pullback rules are disabled, and a Bollinger Band mean-reversion
+rule takes over instead: fade a close that pokes outside the bands and
+snaps back in, which is precisely the behaviour a choppy/sideways market
+produces and a trend strategy cannot exploit. At/above the threshold, the
+market is trending and the original trend-pullback rules apply exclusively
+(mean-reversion would just be fading a real trend there, which loses).
+Each bar therefore fires from at most one of the two rule sets, tagged via
+the `signal_type` column ("trend" or "mean_reversion") so the backtester
+can apply the risk multipliers appropriate to that trade style.
 """
 from __future__ import annotations
 
@@ -31,7 +50,7 @@ from datetime import time as dtime
 import pandas as pd
 
 from gold_bot.config import SessionWindow, StrategyConfig
-from gold_bot.indicators import atr, ema, macd, rsi
+from gold_bot.indicators import adx, atr, bollinger_bands, ema, macd, rsi
 
 TIMEFRAME_TO_PANDAS_FREQ = {
     "M1": "1min",
@@ -94,6 +113,16 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     macd_line, signal_line, hist = macd(close)
     out["macd_hist"] = hist
     out["htf_trend"] = _htf_trend(out, cfg.htf_timeframe, cfg.htf_ema_period)
+    out["adx"] = adx(out, cfg.adx_period)
+    bb_upper, bb_mid, bb_lower = bollinger_bands(close, cfg.bb_period, cfg.bb_std_mult)
+    out["bb_upper"], out["bb_mid"], out["bb_lower"] = bb_upper, bb_mid, bb_lower
+
+    # NOTE: trend-pullback signals below are NOT gated by ADX - an earlier
+    # version required trending_regime (adx >= threshold) for trend entries
+    # too, but that excluded real, profitable trend-pullback trades that
+    # happened to occur at moderate ADX. ADX here is only used to decide
+    # when the (experimental, opt-in) mean-reversion rules may fire.
+    ranging_regime = out["adx"] < cfg.adx_threshold
 
     m5_uptrend = close > out["ema_slow"]
     m5_downtrend = close < out["ema_slow"]
@@ -116,7 +145,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
 
     session_ok = out.index.to_series().apply(lambda ts: in_session(ts, sessions))
 
-    long_signal = (
+    trend_long = (
         uptrend
         & recent_oversold.shift(1).fillna(False)
         & rsi_cross_up
@@ -124,7 +153,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & (close > out["ema_fast"])
         & session_ok
     )
-    short_signal = (
+    trend_short = (
         downtrend
         & recent_overbought.shift(1).fillna(False)
         & rsi_cross_down
@@ -134,6 +163,37 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     )
 
     out["signal"] = 0
-    out.loc[long_signal, "signal"] = 1
-    out.loc[short_signal, "signal"] = -1
+    out["signal_type"] = None
+    out.loc[trend_long, ["signal", "signal_type"]] = [1, "trend"]
+    out.loc[trend_short, ["signal", "signal_type"]] = [-1, "trend"]
+
+    if cfg.enable_mean_reversion:
+        # EXPERIMENTAL, off by default - see README "Mean-reversion
+        # experiment" section. Backtested net negative on real XAUUSD M5
+        # data even after tuning (tighter regime filter, band-width
+        # filter, exit at band midpoint): average loss exceeded average
+        # win despite a higher win rate, so it drags down the combined
+        # result. Left here, disabled, in case future tuning finds a
+        # profitable variant - do not enable without re-validating.
+        prev_close = close.shift(1)
+        mr_long = (
+            ranging_regime
+            & (prev_close < out["bb_lower"].shift(1))
+            & (close >= out["bb_lower"])
+            & (out["rsi"] < cfg.rsi_oversold + 10)
+            & session_ok
+        )
+        mr_short = (
+            ranging_regime
+            & (prev_close > out["bb_upper"].shift(1))
+            & (close <= out["bb_upper"])
+            & (out["rsi"] > cfg.rsi_overbought - 10)
+            & session_ok
+        )
+        # Trend signals take priority when both fire on the same bar.
+        mr_long = mr_long & ~trend_long & ~trend_short
+        mr_short = mr_short & ~trend_long & ~trend_short
+        out.loc[mr_long, ["signal", "signal_type"]] = [1, "mean_reversion"]
+        out.loc[mr_short, ["signal", "signal_type"]] = [-1, "mean_reversion"]
+
     return out

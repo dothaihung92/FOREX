@@ -28,6 +28,13 @@ class StrategyConfig:
     atr_tp_mult: float
     htf_timeframe: str
     htf_ema_period: int
+    adx_period: int
+    adx_threshold: float
+    bb_period: int
+    bb_std_mult: float
+    mr_atr_sl_mult: float
+    mr_atr_tp_mult: float
+    enable_mean_reversion: bool = False
 
 
 @dataclass

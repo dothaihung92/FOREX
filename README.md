@@ -33,6 +33,28 @@ Exits: ATR-based stop loss and take profit, with an optional ATR chandelier
 trailing stop. All of these multipliers, EMA/RSI periods, and session times
 are configurable in `config/config.yaml`.
 
+### Mean-reversion experiment (disabled by default - read before enabling)
+
+`gold_bot/strategy.py` also contains a Bollinger Band mean-reversion rule
+set, gated behind `enable_mean_reversion: false` in `config/config.yaml`,
+intended to trade the flat/choppy stretches (like 2020-2023, see below)
+where the trend-pullback rules above lose money. **It is off by default
+because it tested net negative on the real 5-year dataset in two different
+tunings** (basic band-touch-and-return, and a stricter version with a
+stable-ADX requirement, minimum band-width filter, and exit at the band
+midpoint instead of a fixed ATR target). Both had a higher win rate than
+the trend strategy (50-52%) but a worse profit factor (0.85-0.93), because
+average losses were larger than average wins - mean-reversion stops have
+to survive a further band-extension before reverting, while the target
+(back to the band edge/midpoint) is comparatively close. Enabling it as
+implemented would have turned the combined +22.12% / 5yr result into
+**-44.32%**. The code is left in place, disabled, for further
+experimentation (candidates: statistical z-score entries instead of raw
+band touches, volatility-regime-aware position sizing, or simply
+accepting the trend strategy sits out choppy markets rather than losing
+money trying to trade them) - do not flip it on without re-running
+`scripts/run_backtest.py` on real data first.
+
 ## Risk management
 
 `gold_bot/risk_manager.py` centralizes every risk rule so backtest and live
@@ -130,6 +152,27 @@ optimization round and did not improve profit factor or return, since it
 just converts winning trend trades into smaller wins without reducing the
 loss count. Re-run `scripts/optimize.py` periodically as new data comes in,
 and never skip the demo-account forward-test step before going live.
+
+### Why not just raise `risk_per_trade_pct` for bigger returns?
+
+Position sizing is risk-based (`gold_bot/risk_manager.py`), so return and
+drawdown both scale with `risk_per_trade_pct` roughly together. On the same
+5-year dataset:
+
+| risk/trade | Annualized return | Max drawdown |
+|---|---|---|
+| 1% (default) | ~4%/yr | -11.8% |
+| 2% | ~7.9%/yr | -22.2% |
+| 3% | ~12.0%/yr | -30.6% |
+| 5% | ~18.0%/yr | -45.7% |
+| 8% | ~29.2%/yr | -61.9% |
+| 12% | ~40.7%/yr | **-77.4%** |
+
+There is no setting that gives 50%/yr without a historical drawdown well
+past 80% — i.e. a near-certain account blowup the first time markets don't
+cooperate. Increasing `risk_per_trade_pct` is a real lever if you
+deliberately want more volatility for more expected return, but pick a
+number using this table, not a target return in isolation.
 
 ## Live / paper trading (Windows + MT5 required)
 

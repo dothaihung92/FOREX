@@ -20,6 +20,17 @@ strategy:
   htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
   htf_ema_period: 100
 
+  # Regime switch: below adx_threshold the market is ranging, so the
+  # trend-pullback rules above are disabled and mean-reversion rules below
+  # take over instead. At/above threshold, trend-pullback rules apply.
+  adx_period: 14
+  adx_threshold: 20
+  bb_period: 20
+  bb_std_mult: 2.0
+  mr_atr_sl_mult: 1.5
+  mr_atr_tp_mult: 1.5
+  enable_mean_reversion: false  # experimental - backtested net negative on real data, see README
+
 sessions:                  # giờ UTC - vàng biến động mạnh nhất khi London/New York hoạt động
   - name: london
     start: "07:00"
