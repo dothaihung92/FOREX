@@ -1,0 +1,47 @@
+mt5:
+  login: 0                # điền số tài khoản MT5
+  password: ""             # điền mật khẩu (nên dùng biến môi trường thay vì hardcode)
+  server: ""               # tên server broker, vd "ICMarketsSC-Demo"
+  terminal_path: ""        # đường dẫn terminal64.exe nếu cần chỉ định thủ công
+
+symbol: "XAUUSD"
+timeframe: "M5"
+
+strategy:
+  ema_fast: 50
+  ema_slow: 200
+  rsi_period: 14
+  rsi_oversold: 30
+  rsi_overbought: 70
+  rsi_pullback_level: 45   # ngưỡng RSI xác nhận hồi phục trong xu hướng tăng (100-level cho xu hướng giảm)
+  atr_period: 14
+  atr_sl_mult: 1.5
+  atr_tp_mult: 2.5
+  htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
+  htf_ema_period: 100
+
+sessions:                  # giờ UTC - vàng biến động mạnh nhất khi London/New York hoạt động
+  - name: london
+    start: "07:00"
+    end: "11:00"
+  - name: newyork
+    start: "12:30"
+    end: "16:00"
+
+risk:
+  risk_per_trade_pct: 1.0      # % vốn rủi ro mỗi lệnh
+  max_trades_per_day: 4
+  max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
+  max_concurrent_trades: 1
+  use_trailing_stop: true
+  trailing_atr_mult: 1.2
+
+backtest:
+  initial_balance: 10000
+  spread_points: 25        # spread giả định (điểm), XAUUSD thường 2.0-3.0 pip = 20-30 points tùy broker
+  commission_per_lot: 0.0
+  slippage_points: 5
+
+logging:
+  level: "INFO"
+  file: "logs/gold_bot.log"

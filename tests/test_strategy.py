@@ -1,0 +1,53 @@
+import pandas as pd
+
+from gold_bot.config import SessionWindow, StrategyConfig
+from gold_bot.strategy import generate_signals, in_session
+
+STRATEGY_CFG = StrategyConfig(
+    ema_fast=50,
+    ema_slow=200,
+    rsi_period=14,
+    rsi_oversold=30,
+    rsi_overbought=70,
+    rsi_pullback_level=45,
+    atr_period=14,
+    atr_sl_mult=1.5,
+    atr_tp_mult=2.5,
+    htf_timeframe="M15",
+    htf_ema_period=100,
+)
+
+ALL_DAY_SESSION = [SessionWindow(name="all", start="00:00", end="23:59")]
+LONDON_ONLY = [SessionWindow(name="london", start="07:00", end="11:00")]
+
+
+def test_in_session_basic():
+    ts_in = pd.Timestamp("2024-01-01 08:00", tz="UTC")
+    ts_out = pd.Timestamp("2024-01-01 20:00", tz="UTC")
+    assert in_session(ts_in, LONDON_ONLY) is True
+    assert in_session(ts_out, LONDON_ONLY) is False
+
+
+def test_generate_signals_has_expected_columns(synthetic_ohlc):
+    result = generate_signals(synthetic_ohlc, STRATEGY_CFG, ALL_DAY_SESSION)
+    for col in ["ema_fast", "ema_slow", "rsi", "atr", "macd_hist", "htf_trend", "signal"]:
+        assert col in result.columns
+    assert set(result["signal"].unique()).issubset({-1, 0, 1})
+
+
+def test_session_filter_blocks_all_signals_outside_window(synthetic_ohlc):
+    # A session window that never matches any bar timestamp should produce
+    # zero trade signals regardless of trend/momentum conditions.
+    impossible_session = [SessionWindow(name="never", start="23:58", end="23:59")]
+    result = generate_signals(synthetic_ohlc, STRATEGY_CFG, impossible_session)
+    assert (result["signal"] == 0).all()
+
+
+def test_signals_only_fire_with_htf_trend_alignment(synthetic_ohlc):
+    result = generate_signals(synthetic_ohlc, STRATEGY_CFG, ALL_DAY_SESSION)
+    longs = result[result["signal"] == 1]
+    shorts = result[result["signal"] == -1]
+    if len(longs):
+        assert (longs["htf_trend"] > 0).all()
+    if len(shorts):
+        assert (shorts["htf_trend"] < 0).all()
