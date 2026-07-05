@@ -52,6 +52,16 @@ def bollinger_bands(series: pd.Series, period: int = 20, std_mult: float = 2.0):
     return upper, mid, lower
 
 
+def stochastic(df: pd.DataFrame, k_period: int = 14, d_period: int = 3, smooth_k: int = 3):
+    """Classic slow stochastic oscillator: %K smoothed, %D is its SMA."""
+    low_min = df["low"].rolling(k_period).min()
+    high_max = df["high"].rolling(k_period).max()
+    raw_k = 100 * (df["close"] - low_min) / (high_max - low_min).replace(0, np.nan)
+    k = raw_k.rolling(smooth_k).mean()
+    d = k.rolling(d_period).mean()
+    return k.fillna(50.0), d.fillna(50.0)
+
+
 def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     """Wilder's Average Directional Index - measures trend strength
     (not direction). Low ADX means the market is ranging/choppy, which is

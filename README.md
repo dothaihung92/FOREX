@@ -55,6 +55,36 @@ accepting the trend strategy sits out choppy markets rather than losing
 money trying to trade them) - do not flip it on without re-running
 `scripts/run_backtest.py` on real data first.
 
+### More trades vs. higher win rate - tested, and they trade off against each other
+
+A natural next ask is "add more indicators to catch more setups *and* win
+more of them." Tested two concrete versions of that on the real 5-year
+dataset (not merged into the codebase since both lost to the baseline):
+
+- **Stochastic oscillator as an additional pullback trigger** (fire a
+  trend entry when %K crosses %D from oversold/overbought, alongside the
+  existing RSI trigger): trade count went 264 -> 1,747, but profit factor
+  dropped from 1.45 to 0.95 and the 5-year result flipped from +61.62% to
+  **-35.96%** with an -86.11% drawdown. Stochastic %K/%D crosses are too
+  frequent/noisy on M5 to use as a standalone trigger.
+- **ADX-rising filter** (only take a trend entry while ADX is
+  increasing, i.e. the trend is strengthening rather than fading): win
+  rate improved 44.7% -> 50.94% and profit factor improved 1.45 -> 1.51,
+  confirming the filter does select higher-quality setups - but trade
+  count collapsed 264 -> 53, so the 5-year total return dropped from
+  +61.62% to +11.44% despite the better per-trade quality. Too few
+  compounding opportunities.
+
+The pattern across every experiment in this README (mean-reversion, ADX
+gating on trend entries, Stochastic, ADX-rising) is consistent: loosening
+entry criteria to get more trades consistently destroys quality faster
+than the extra volume compensates, and tightening criteria to raise win
+rate consistently removes more trades than the quality gain compensates
+for. For this strategy structure, asset, and timeframe, the current
+config is the best point found after this search - "just add another
+indicator" is not a free lever here, each addition needs the same
+real-data backtest scrutiny before being trusted.
+
 ## Risk management
 
 `gold_bot/risk_manager.py` centralizes every risk rule so backtest and live
@@ -71,20 +101,17 @@ trading use identical logic:
     normalized automatically: a wider ATR stop gets a smaller lot, a
     tighter stop a bigger one, so dollar risk per trade stays constant.
   - **`equity_step`** (current default, matches a $500-account request) —
-    start at `base_lot` (0.01) while equity is at `base_equity` ($500);
-    add `lot_step` (0.01) for every `equity_step_usd` ($100) of profit
-    above that, remove `lot_step` for every $100 of loss, never going
-    below `min_lot` (0.01). **This does not normalize risk against the
-    stop distance** — the lot is fixed by the equity milestone alone, so
-    the dollar risk of a given trade moves with ATR/volatility at entry
-    time instead of staying constant. On the real 5-year backtest this
-    happened to produce *smaller* risk per trade than 1% `percent_risk`
-    (XAUUSD's contract size means 0.01 lot = 1 oz, a small dollar move per
-    trade relative to $500), so drawdown came out lower too — but that's
-    a property of gold's current price level and this dataset's ATR
-    range, not a guarantee. If gold's price or volatility regime changes
-    a lot, re-run the backtest before trusting the same lot-per-$100 step
-    still risks a sane percentage of your account.
+    start at `base_lot` while equity is at `base_equity` ($500); add
+    `lot_step` for every `equity_step_usd` ($100) of profit above that,
+    remove `lot_step` for every $100 of loss, never going below `min_lot`.
+    **This does not normalize risk against the stop distance** — the lot
+    is fixed by the equity milestone alone, so the dollar risk of a given
+    trade moves with ATR/volatility at entry time instead of staying
+    constant. `base_lot`/`lot_step`/`min_lot` were grid-searched on the
+    real 5-year dataset (see table below) and set to 0.02 - if gold's
+    price or volatility regime changes a lot from what's in
+    `data/XAUUSD_M5_real.csv`, re-run the backtest before trusting the
+    same lot-per-$100 step still risks a sane percentage of your account.
 
 ### $500 account backtest (current config defaults)
 
@@ -95,12 +122,32 @@ the full 5-year real-data backtest gives:
 |---|---|
 | Trades | 264 |
 | Win rate | 44.7% |
-| Profit factor | 1.38 |
-| Total return | +20.35% / 5 years ($500 → $601.75) |
-| Max drawdown | -7.4% |
+| Profit factor | 1.45 |
+| Total return | +61.62% / 5 years ($500 → $808.12) |
+| Max drawdown | -14.13% |
+
+This came from grid-searching the `equity_step` parameters themselves
+(`base_lot`/`lot_step` of 0.01 vs 0.02, `equity_step_usd` of 50 vs 100)
+alongside `percent_risk` at several risk levels, all on the same $500
+starting balance and the same 264 trades:
+
+| Sizing | Return / 5yr | Max DD | Final equity |
+|---|---|---|---|
+| equity_step 0.01/$100 | +20.35% | -7.4% | $602 |
+| equity_step 0.01/$50 | +30.81% | -7.74% | $654 |
+| **equity_step 0.02/$100 (current default)** | **+61.62%** | **-14.13%** | **$808** |
+| equity_step 0.02/$50 | +57.96% | -19.76% | $790 |
+| percent_risk 2%/trade | +48.05% | -22.05% | $740 |
+| percent_risk 3%/trade | +70.52% | -30.91% | $853 |
+| percent_risk 5%/trade | +126.77% | -45.39% | $1,134 |
+
+`equity_step 0.02/$100` had the best profit factor (1.45) and a better
+return-to-drawdown ratio than any `percent_risk` level tested, which is
+why it's the default - but as always, past backtest performance doesn't
+guarantee this ordering holds on future data.
 
 Two caveats specific to a small account: (1) XAUUSD's contract size means
-even `min_lot=0.01` is 1 oz — at ~$3,300/oz that's ~$3,300 of notional
+even `min_lot=0.02` is 2 oz — at ~$3,300/oz that's ~$6,600 of notional
 exposure against $500 of capital, so check your broker's margin
 requirement and leverage before going live, this is not "safe" just
 because the position sizing is small in lot terms. (2) with such a small

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from gold_bot.indicators import adx, atr, bollinger_bands, ema, macd, rsi
+from gold_bot.indicators import adx, atr, bollinger_bands, ema, macd, rsi, stochastic
 
 
 def test_ema_converges_to_constant_series():
@@ -52,6 +52,20 @@ def test_adx_bounded_and_high_for_strong_trend():
     assert (result.dropna() >= 0).all()
     assert (result.dropna() <= 100).all()
     assert result.iloc[-1] > 30  # strong monotonic trend -> high ADX
+
+
+def test_stochastic_bounded_0_100(synthetic_ohlc):
+    k, d = stochastic(synthetic_ohlc)
+    assert k.dropna().between(0, 100).all()
+    assert d.dropna().between(0, 100).all()
+
+
+def test_stochastic_high_for_close_at_recent_high():
+    df = pd.DataFrame(
+        {"high": np.full(30, 110.0), "low": np.full(30, 90.0), "close": np.full(30, 110.0)}
+    )
+    k, d = stochastic(df, k_period=14, d_period=3, smooth_k=3)
+    assert k.iloc[-1] > 95
 
 
 def test_adx_low_for_flat_choppy_series():

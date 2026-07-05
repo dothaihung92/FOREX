@@ -57,10 +57,10 @@ risk:
   #                   lệnh thay đổi theo biến động ATR tại thời điểm vào lệnh.
   sizing_mode: equity_step
   base_equity: 500.0
-  base_lot: 0.01
-  lot_step: 0.01
+  base_lot: 0.02          # tuned: 0.02/$100 step gave the best profit-factor/drawdown tradeoff tested
+  lot_step: 0.02
   equity_step_usd: 100.0
-  min_lot: 0.01
+  min_lot: 0.02
 
 backtest:
   initial_balance: 500
