@@ -9,14 +9,14 @@ timeframe: "M5"
 
 strategy:
   ema_fast: 50
-  ema_slow: 200
+  ema_slow: 100            # tuned via scripts/optimize.py on 2020-2023 train / validated on 2023-2025 test
   rsi_period: 14
   rsi_oversold: 30
   rsi_overbought: 70
-  rsi_pullback_level: 45   # ngưỡng RSI xác nhận hồi phục trong xu hướng tăng (100-level cho xu hướng giảm)
+  rsi_pullback_level: 50   # ngưỡng RSI xác nhận hồi phục trong xu hướng tăng (100-level cho xu hướng giảm)
   atr_period: 14
-  atr_sl_mult: 1.5
-  atr_tp_mult: 2.5
+  atr_sl_mult: 2.0         # SL rộng hơn giúp lệnh "thở" qua nhiễu M5, cải thiện profit factor rõ rệt khi tối ưu
+  atr_tp_mult: 3.0
   htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
   htf_ema_period: 100
 
