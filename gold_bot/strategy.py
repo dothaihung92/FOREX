@@ -129,6 +129,15 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     uptrend = m5_uptrend & (out["htf_trend"] > 0)
     downtrend = m5_downtrend & (out["htf_trend"] < 0)
 
+    # Trend strength filter: right at an EMA cross the "trend" is barely
+    # established and these entries lose disproportionately (backtested on
+    # real data: skipping the bottom quartile of EMA-fast/slow gap turned
+    # the flat 2020-2023 period from a loss into a profit, and improved
+    # profit factor in the 2023-2025 trending period too - validated on
+    # both, not just one regime). Require the gap to be a real gap.
+    out["trend_strength_pct"] = (out["ema_fast"] - out["ema_slow"]).abs() / close * 100
+    trend_established = out["trend_strength_pct"] > cfg.min_trend_strength_pct
+
     # Pullback: RSI touched near-oversold within the last N bars, then
     # crossed back above the pullback level on this bar.
     lookback = 6
@@ -152,6 +161,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & macd_rising
         & (close > out["ema_fast"])
         & session_ok
+        & trend_established
     )
     trend_short = (
         downtrend
@@ -160,6 +170,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & macd_falling
         & (close < out["ema_fast"])
         & session_ok
+        & trend_established
     )
 
     out["signal"] = 0

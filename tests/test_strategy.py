@@ -74,3 +74,19 @@ def test_mean_reversion_signals_only_fire_in_ranging_regime_when_enabled(synthet
     mr_rows = result[result["signal_type"] == "mean_reversion"]
     if len(mr_rows):
         assert (mr_rows["adx"] < cfg.adx_threshold).all()
+
+
+def test_trend_strength_filter_blocks_weak_trend_entries(synthetic_ohlc):
+    # A very high threshold should eliminate all trend entries, since no
+    # bar can have an EMA gap exceeding an absurdly large percentage.
+    cfg = replace(STRATEGY_CFG, min_trend_strength_pct=1000.0)
+    result = generate_signals(synthetic_ohlc, cfg, ALL_DAY_SESSION)
+    assert (result["signal_type"] != "trend").all()
+
+
+def test_trend_strength_filter_disabled_at_zero_threshold(synthetic_ohlc):
+    cfg = replace(STRATEGY_CFG, min_trend_strength_pct=0.0)
+    result = generate_signals(synthetic_ohlc, cfg, ALL_DAY_SESSION)
+    trend_rows = result[result["signal_type"] == "trend"]
+    if len(trend_rows):
+        assert (trend_rows["trend_strength_pct"] > 0.0).all()

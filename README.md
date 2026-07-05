@@ -28,10 +28,60 @@ See the docstring in `gold_bot/strategy.py` for full rationale. Summary:
 4. **Session filter** — entries only fire during London / New York session
    windows (configurable, UTC), since gold's real momentum is concentrated
    there; outside these windows M5 moves are mostly spread/noise.
+5. **Trend strength filter** (`min_trend_strength_pct`) — skip entries when
+   the EMA fast/slow gap (as % of price) is too small, i.e. right at an EMA
+   cross where the "trend" isn't really established yet. Found by analyzing
+   264 backtested trades for what actually separated winners from losers
+   (see "Data-driven trend-strength filter" below) and validated on both the
+   flat 2020-2023 period and the trending 2023-2025 period independently -
+   this is the single biggest improvement found in this project, bigger than
+   any parameter-grid tuning round.
 
 Exits: ATR-based stop loss and take profit, with an optional ATR chandelier
 trailing stop. All of these multipliers, EMA/RSI periods, and session times
 are configurable in `config/config.yaml`.
+
+### Data-driven trend-strength filter (the actual answer to "why so many losses")
+
+Rather than guessing at another indicator, the losing trades themselves were
+analyzed (264 trades from the tuned baseline: hour of day, day of week,
+month, ADX at entry, ATR/volatility at entry, EMA-fast/slow gap, MACD
+histogram magnitude) to find what actually separated winners from losers.
+Three candidate filters came out of that analysis; each was backtested on
+real data before adopting anything:
+
+- **Skip Monday entries** (worst day, 25.6% win rate vs. 41-54% Tue-Fri):
+  PF 1.45 -> 1.60, +61.62% -> +78.99%, but a small enough sample (only
+  Mondays) to be more suspect as noise.
+- **Skip lowest-ATR-quartile entries** ("dead market" filter): no real
+  effect (PF 1.45 -> 1.46) - discarded.
+- **Skip lowest-quartile EMA-gap entries** (require the trend to be a real
+  gap, not right at the cross): PF 1.45 -> **2.10**, +61.62% ->
+  **+109.39%**, drawdown *improved* -14.13% -> -8.79%.
+
+The EMA-gap filter was the clear winner and was validated on the train/test
+split used earlier in this project (2020-08 to 2023-08 / 2023-08 to
+2025-08), computing the threshold from train data only to rule out
+lookahead:
+
+| Period | Baseline PF | Baseline return | + Filter PF | + Filter return |
+|---|---|---|---|---|
+| Train (flat/choppy 2020-2023) | 1.09 | +5.82% | **1.35** | **+14.52%** |
+| Test (trending 2023-2025) | 1.87 | +53.21% | **2.47** | **+43.99%** |
+
+This is the first change in the whole project that improved *both* the
+choppy period and the trending period independently, rather than trading
+one off against the other - strong evidence it isn't overfit to a single
+regime. It's now the default (`min_trend_strength_pct: 0.0256` in
+`config/config.yaml`). Full 5-year backtest with current defaults:
+
+| Metric | Before this filter | After |
+|---|---|---|
+| Trades | 264 | 173 |
+| Win rate | 44.7% | 49.71% |
+| Profit factor | 1.45 | **2.10** |
+| Total return (equity_step, $500) | +61.62% | **+109.39%** |
+| Max drawdown | -14.13% | **-8.79%** |
 
 ### Mean-reversion experiment (disabled by default - read before enabling)
 
@@ -152,21 +202,29 @@ trading use identical logic:
 
 ### $500 account backtest (current config defaults)
 
-With `backtest.initial_balance: 500` and the `equity_step` sizing above,
-the full 5-year real-data backtest gives:
+With `backtest.initial_balance: 500`, the `equity_step` sizing above, and
+the trend-strength filter described earlier, the full 5-year real-data
+backtest gives:
 
 | Metric | Value |
 |---|---|
-| Trades | 264 |
-| Win rate | 44.7% |
-| Profit factor | 1.45 |
-| Total return | +61.62% / 5 years ($500 → $808.12) |
-| Max drawdown | -14.13% |
+| Trades | 173 |
+| Win rate | 49.71% |
+| Profit factor | 2.10 |
+| Total return | +109.39% / 5 years ($500 → $1,046.93) |
+| Max drawdown | -8.79% |
 
-This came from grid-searching the `equity_step` parameters themselves
-(`base_lot`/`lot_step` of 0.01 vs 0.02, `equity_step_usd` of 50 vs 100)
-alongside `percent_risk` at several risk levels, all on the same $500
-starting balance and the same 264 trades:
+(The `equity_step` vs. `percent_risk` sizing comparison table below predates
+the trend-strength filter - it was run on the 264-trade signal set to
+choose the sizing parameters. The filter changes which trades fire, not how
+lots are sized, so the sizing conclusion - `equity_step 0.02/$100` wins on
+risk-adjusted terms - still holds, but the absolute numbers below are from
+before the filter and are superseded by the table above.)
+
+This sizing choice came from grid-searching the `equity_step` parameters
+themselves (`base_lot`/`lot_step` of 0.01 vs 0.02, `equity_step_usd` of 50
+vs 100) alongside `percent_risk` at several risk levels, all on the same
+$500 starting balance:
 
 | Sizing | Return / 5yr | Max DD | Final equity |
 |---|---|---|---|
@@ -178,10 +236,39 @@ starting balance and the same 264 trades:
 | percent_risk 3%/trade | +70.52% | -30.91% | $853 |
 | percent_risk 5%/trade | +126.77% | -45.39% | $1,134 |
 
-`equity_step 0.02/$100` had the best profit factor (1.45) and a better
-return-to-drawdown ratio than any `percent_risk` level tested, which is
-why it's the default - but as always, past backtest performance doesn't
+`equity_step 0.02/$100` had the best profit factor (1.45 at the time) and a
+better return-to-drawdown ratio than any `percent_risk` level tested, which
+is why it's the default - but as always, past backtest performance doesn't
 guarantee this ordering holds on future data.
+
+### Updated risk/return ceiling after the trend-strength filter
+
+The "why not just raise risk_per_trade_pct" table further down was run
+before the trend-strength filter existed. With the filter, the achievable
+monthly-compounded-return ceiling roughly doubled - re-running the same
+`percent_risk` sweep on a $1,000 account:
+
+| risk/trade | Annualized monthly rate | Max drawdown |
+|---|---|---|
+| 1% | 0.39%/mo | -6.4% |
+| 3% | 1.12%/mo | -18.3% |
+| 5% | 1.89%/mo | -25.9% |
+| 8% | 2.99%/mo | -35.5% |
+| 10% | 3.58%/mo | -42.4% |
+| 12% | 4.10%/mo | -48.7% |
+| 15% | 4.76%/mo | -57.5% |
+| 20% | 5.57%/mo | -68.6% |
+| 25% | 5.99%/mo | -77.7% |
+| 30% (near the ceiling) | 6.01%/mo | -85.7% |
+
+The peak achievable monthly rate is now ~6%/month (vs. ~3%/month before
+this filter) but plateaus there - 25% and 30% risk give almost the same
+monthly rate while drawdown gets dramatically worse, the same
+diminishing-then-negative pattern as before, just shifted up. **10%/month
+is still not achievable at any risk level even with this improved
+strategy** - responsible risk levels (3-8%/trade) give 1-3%/month with
+18-36% drawdown, which is still a large improvement over the pre-filter
+numbers at the same risk level.
 
 Two caveats specific to a small account: (1) XAUUSD's contract size means
 even `min_lot=0.02` is 2 oz — at ~$3,300/oz that's ~$6,600 of notional

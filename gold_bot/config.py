@@ -35,6 +35,7 @@ class StrategyConfig:
     mr_atr_sl_mult: float
     mr_atr_tp_mult: float
     enable_mean_reversion: bool = False
+    min_trend_strength_pct: float = 0.0  # skip trend entries when EMA fast/slow gap is below this % of price
 
 
 @dataclass
