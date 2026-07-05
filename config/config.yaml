@@ -16,7 +16,7 @@ strategy:
   rsi_pullback_level: 50   # ngưỡng RSI xác nhận hồi phục trong xu hướng tăng (100-level cho xu hướng giảm)
   atr_period: 14
   atr_sl_mult: 2.0         # SL rộng hơn giúp lệnh "thở" qua nhiễu M5, cải thiện profit factor rõ rệt khi tối ưu
-  atr_tp_mult: 3.0
+  atr_tp_mult: 2.5         # tighter trailing stop below usually exits before this TP anyway
   htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
   htf_ema_period: 100
 
@@ -34,7 +34,7 @@ risk:
   max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
   max_concurrent_trades: 1
   use_trailing_stop: true
-  trailing_atr_mult: 1.2
+  trailing_atr_mult: 1.0  # tuned: tighter trailing locks in profit sooner, improves both return and drawdown
 
 backtest:
   initial_balance: 10000

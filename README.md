@@ -102,24 +102,34 @@ uptrend (+71.2%). A trend-pullback strategy structurally needs a trend to
 profit from — no amount of parameter tuning fixes that, it can only reduce
 how much a choppy period costs you.
 
-Current `config/config.yaml` defaults (`ema_slow=100`, `rsi_pullback_level=50`,
-`atr_sl_mult=2.0`, `atr_tp_mult=3.0` — wider ATR stop than the original guess,
-which mattered more than any other single change) give, over the full 5
-years:
+A second round of tuning (`scripts/optimize.py --rank-by win_rate_pct`, adding
+`atr_tp_mult`, `rsi_oversold/overbought`, and `trailing_atr_mult` to the grid)
+found that a **tighter trailing stop matters more than the take-profit
+distance** — most winners exit via the trailing stop long before reaching a
+far take-profit, so shrinking `atr_tp_mult` from 3.0 to 2.5 changed nothing,
+while tightening `trailing_atr_mult` from 1.2 to 1.0 locked in profit sooner
+on essentially the same set of trades. Current `config/config.yaml` defaults
+(`ema_slow=100`, `rsi_pullback_level=50`, `atr_sl_mult=2.0`, `atr_tp_mult=2.5`,
+`trailing_atr_mult=1.0`) give, over the full 5 years:
 
 | Metric | Value |
 |---|---|
 | Trades | 264 (~53/year) |
 | Win rate | 44.7% |
-| Profit factor | 1.20 |
-| Total return | +16.91% / 5 years |
-| Max drawdown | -13.27% |
+| Profit factor | 1.28 |
+| Total return | +22.12% / 5 years |
+| Max drawdown | -11.78% |
 
-That is a real edge, but a modest one (~3%/year before broker commissions),
+That is a real edge, but a modest one (~4%/year before broker commissions),
 concentrated almost entirely in the 2024-2025 trending period — 2020-2023
 was flat-to-losing. **Do not expect this to profit in a sideways/choppy
-gold market.** Re-run `scripts/optimize.py` periodically as new data comes
-in, and never skip the demo-account forward-test step before going live.
+gold market.** Win rate stays under 45% because the strategy is designed to
+cut losers quickly and let a minority of trend trades run — chasing a
+higher win rate directly (e.g. tighter take-profit) was tried in the second
+optimization round and did not improve profit factor or return, since it
+just converts winning trend trades into smaller wins without reducing the
+loss count. Re-run `scripts/optimize.py` periodically as new data comes in,
+and never skip the demo-account forward-test step before going live.
 
 ## Live / paper trading (Windows + MT5 required)
 
