@@ -40,15 +40,30 @@ sessions:                  # giờ UTC - vàng biến động mạnh nhất khi 
     end: "16:00"
 
 risk:
-  risk_per_trade_pct: 1.0      # % vốn rủi ro mỗi lệnh
+  risk_per_trade_pct: 1.0      # chỉ dùng khi sizing_mode: percent_risk
   max_trades_per_day: 4
   max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
   max_concurrent_trades: 1
   use_trailing_stop: true
   trailing_atr_mult: 1.0  # tuned: tighter trailing locks in profit sooner, improves both return and drawdown
 
+  # Cách tính khối lượng lệnh (lot):
+  #   percent_risk -> lot tính theo % vốn rủi ro mỗi lệnh (risk_per_trade_pct), tự
+  #                   động co giãn theo khoảng cách SL. An toàn hơn khi thua liên tục
+  #                   vì lot tự giảm theo equity một cách liên tục.
+  #   equity_step  -> lot cố định theo mốc vốn: bắt đầu base_lot tại base_equity, cứ
+  #                   lãi thêm equity_step_usd thì +lot_step, lỗ thì -lot_step (không
+  #                   dưới min_lot). KHÔNG tự chuẩn hóa rủi ro theo SL - rủi ro $ mỗi
+  #                   lệnh thay đổi theo biến động ATR tại thời điểm vào lệnh.
+  sizing_mode: equity_step
+  base_equity: 500.0
+  base_lot: 0.01
+  lot_step: 0.01
+  equity_step_usd: 100.0
+  min_lot: 0.01
+
 backtest:
-  initial_balance: 10000
+  initial_balance: 500
   spread_points: 25        # spread giả định (điểm), XAUUSD thường 2.0-3.0 pip = 20-30 points tùy broker
   commission_per_lot: 0.0
   slippage_points: 5

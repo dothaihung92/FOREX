@@ -45,6 +45,12 @@ class RiskConfig:
     max_concurrent_trades: int
     use_trailing_stop: bool
     trailing_atr_mult: float
+    sizing_mode: str = "percent_risk"  # "percent_risk" or "equity_step"
+    base_equity: float = 500.0
+    base_lot: float = 0.01
+    lot_step: float = 0.01
+    equity_step_usd: float = 100.0
+    min_lot: float = 0.01
 
 
 @dataclass

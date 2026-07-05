@@ -60,13 +60,53 @@ money trying to trade them) - do not flip it on without re-running
 `gold_bot/risk_manager.py` centralizes every risk rule so backtest and live
 trading use identical logic:
 
-- Position size computed so a stop-out risks exactly `risk_per_trade_pct` of
-  current equity (not a fixed lot size).
 - `max_trades_per_day` and `max_concurrent_trades` caps.
 - `max_daily_loss_pct` circuit breaker — once tripped, no new trades open
   until the next calendar day (UTC).
 - Optional ATR-based trailing stop that only ever moves in the trade's
   favor.
+- Position sizing, controlled by `risk.sizing_mode`:
+  - **`percent_risk`** (the textbook approach) — lot size computed so a
+    stop-out risks exactly `risk_per_trade_pct` of current equity. Risk is
+    normalized automatically: a wider ATR stop gets a smaller lot, a
+    tighter stop a bigger one, so dollar risk per trade stays constant.
+  - **`equity_step`** (current default, matches a $500-account request) —
+    start at `base_lot` (0.01) while equity is at `base_equity` ($500);
+    add `lot_step` (0.01) for every `equity_step_usd` ($100) of profit
+    above that, remove `lot_step` for every $100 of loss, never going
+    below `min_lot` (0.01). **This does not normalize risk against the
+    stop distance** — the lot is fixed by the equity milestone alone, so
+    the dollar risk of a given trade moves with ATR/volatility at entry
+    time instead of staying constant. On the real 5-year backtest this
+    happened to produce *smaller* risk per trade than 1% `percent_risk`
+    (XAUUSD's contract size means 0.01 lot = 1 oz, a small dollar move per
+    trade relative to $500), so drawdown came out lower too — but that's
+    a property of gold's current price level and this dataset's ATR
+    range, not a guarantee. If gold's price or volatility regime changes
+    a lot, re-run the backtest before trusting the same lot-per-$100 step
+    still risks a sane percentage of your account.
+
+### $500 account backtest (current config defaults)
+
+With `backtest.initial_balance: 500` and the `equity_step` sizing above,
+the full 5-year real-data backtest gives:
+
+| Metric | Value |
+|---|---|
+| Trades | 264 |
+| Win rate | 44.7% |
+| Profit factor | 1.38 |
+| Total return | +20.35% / 5 years ($500 → $601.75) |
+| Max drawdown | -7.4% |
+
+Two caveats specific to a small account: (1) XAUUSD's contract size means
+even `min_lot=0.01` is 1 oz — at ~$3,300/oz that's ~$3,300 of notional
+exposure against $500 of capital, so check your broker's margin
+requirement and leverage before going live, this is not "safe" just
+because the position sizing is small in lot terms. (2) with such a small
+account, `max_daily_loss_pct` and `max_trades_per_day` matter more than
+usual — a string of losses is a bigger percentage swing on $500 than on
+$10,000, so don't disable those circuit breakers.
 
 ## Project layout
 
@@ -130,9 +170,12 @@ found that a **tighter trailing stop matters more than the take-profit
 distance** — most winners exit via the trailing stop long before reaching a
 far take-profit, so shrinking `atr_tp_mult` from 3.0 to 2.5 changed nothing,
 while tightening `trailing_atr_mult` from 1.2 to 1.0 locked in profit sooner
-on essentially the same set of trades. Current `config/config.yaml` defaults
+on essentially the same set of trades. Current strategy defaults
 (`ema_slow=100`, `rsi_pullback_level=50`, `atr_sl_mult=2.0`, `atr_tp_mult=2.5`,
-`trailing_atr_mult=1.0`) give, over the full 5 years:
+`trailing_atr_mult=1.0`) generate the same 264 trades / 44.7% win rate no
+matter which position-sizing mode is used (sizing only changes lot size,
+not entry/exit signals). With `percent_risk` sizing at 1%/trade and a
+$10,000 starting balance, that's:
 
 | Metric | Value |
 |---|---|
@@ -141,6 +184,11 @@ on essentially the same set of trades. Current `config/config.yaml` defaults
 | Profit factor | 1.28 |
 | Total return | +22.12% / 5 years |
 | Max drawdown | -11.78% |
+
+(See "$500 account backtest" above for the same signals under the
+`equity_step` sizing that's the current config default — same trades,
+different lot sizing, so a different profit factor/drawdown since the
+$-per-lot ratio isn't identical between the two modes.)
 
 That is a real edge, but a modest one (~4%/year before broker commissions),
 concentrated almost entirely in the 2024-2025 trending period — 2020-2023

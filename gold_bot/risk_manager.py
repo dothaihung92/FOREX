@@ -60,6 +60,11 @@ class RiskManager:
         return True, ""
 
     def position_size_lots(self, entry_price: float, stop_price: float) -> float:
+        if self.cfg.sizing_mode == "equity_step":
+            return self._position_size_lots_equity_step()
+        return self._position_size_lots_percent_risk(entry_price, stop_price)
+
+    def _position_size_lots_percent_risk(self, entry_price: float, stop_price: float) -> float:
         """Lots sized so that a stop-out risks exactly risk_per_trade_pct of equity."""
         stop_distance = abs(entry_price - stop_price)
         if stop_distance <= 0:
@@ -70,6 +75,21 @@ class RiskManager:
             return 0.0
         lots = risk_amount / loss_per_lot
         return max(0.0, round(lots, 2))
+
+    def _position_size_lots_equity_step(self) -> float:
+        """Step-based sizing some retail traders use instead of risk-percent
+        sizing: start at base_lot for base_equity, then add lot_step for
+        every equity_step_usd of profit above base_equity, and remove
+        lot_step for every equity_step_usd of loss below it.
+
+        Unlike percent-risk sizing, this does NOT normalize risk against
+        the stop distance - the lot size is fixed by the equity milestone
+        regardless of how far away the ATR-based stop is, so the dollar
+        risk of a given trade varies with market volatility at entry time.
+        """
+        steps = (self.equity - self.cfg.base_equity) / self.cfg.equity_step_usd
+        lots = self.cfg.base_lot + self.cfg.lot_step * int(steps)
+        return round(max(self.cfg.min_lot, lots), 2)
 
     def stop_loss(self, entry_price: float, atr_value: float, direction: int, atr_sl_mult: float) -> float:
         return entry_price - direction * atr_sl_mult * atr_value
