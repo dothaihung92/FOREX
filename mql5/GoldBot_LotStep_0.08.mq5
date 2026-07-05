@@ -292,7 +292,7 @@ void CheckEntrySignal()
    if(!CanOpenTrade()) return;
    if(CountOpenPositions() > 0) return;
 
-   double emaFast[3], emaSlow[3], rsiBuf[10], atrBuf[3], macdMain[10], macdSignal[10], closeBuf[3];
+   double emaFast[], emaSlow[], rsiBuf[], atrBuf[], macdMain[], macdSignal[], closeBuf[];
    ArraySetAsSeries(emaFast,true); ArraySetAsSeries(emaSlow,true);
    ArraySetAsSeries(rsiBuf,true);  ArraySetAsSeries(atrBuf,true);
    ArraySetAsSeries(macdMain,true);ArraySetAsSeries(macdSignal,true);
@@ -320,8 +320,8 @@ void CheckEntrySignal()
 
    // Higher-timeframe trend, using the last fully CLOSED HTF bar (shift=1)
    // so we never peek at an HTF bar still forming alongside this M5 bar.
-   double htfEma[2]; ArraySetAsSeries(htfEma,true);
-   double htfClose[2]; ArraySetAsSeries(htfClose,true);
+   double htfEma[]; ArraySetAsSeries(htfEma,true);
+   double htfClose[]; ArraySetAsSeries(htfClose,true);
    if(CopyBuffer(hEmaHtf,0,1,2,htfEma)<2) return;
    if(CopyClose(_Symbol,InpHtfTimeframe,1,2,htfClose)<2) return;
 
@@ -347,7 +347,7 @@ void CheckEntrySignal()
    bool macdRising  = macdHist1 > macdHist2;
    bool macdFalling = macdHist1 < macdHist2;
 
-   datetime timeArr[3];
+   datetime timeArr[]; ArraySetAsSeries(timeArr,true);
    if(CopyTime(_Symbol,PERIOD_M5,0,3,timeArr)<3) return;
    datetime bar1TimeUtc = timeArr[1] - InpBrokerUtcOffsetHours*3600;
 
@@ -389,7 +389,7 @@ void OnTick()
    if(curBarTime == g_lastBarTime) return;
    g_lastBarTime = curBarTime;
 
-   double atrBuf[2]; ArraySetAsSeries(atrBuf,true);
+   double atrBuf[]; ArraySetAsSeries(atrBuf,true);
    if(CopyBuffer(hAtrM5,0,0,2,atrBuf) >= 2)
       ManageTrailingStop(atrBuf[1]);
 
