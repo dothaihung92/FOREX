@@ -12,6 +12,37 @@ smoke-testing the engine only — **you must backtest on real historical
 XAUUSD M5 data and forward-test on a demo account before ever risking real
 money.** Past backtest performance never guarantees future results.
 
+## Native MQL5 Expert Advisor (paste directly into MT5)
+
+`mql5/GoldBot_LotStep_0.05.mq5`, `_0.06.mq5`, and `_0.08.mq5` are a native
+MetaTrader 5 EA port of the same strategy (trend filter, RSI pullback, MACD
+confirmation, session filter, trend-strength filter, hour-9-UTC exclusion,
+ATR stop/target/trailing, `equity_step` sizing) - no Python needed, just
+open in MetaEditor, compile, and attach to an XAUUSD M5 chart. The three
+files are identical except for `InpBaseLot`/`InpLotStep`/`InpMinLot`.
+
+**Read this before using them:**
+- These files were written to match the validated Python logic but have
+  **not been compiled or run in MetaTrader** (no Windows/MT5 in the
+  authoring environment). Compile in MetaEditor, run in Strategy Tester
+  over real XAUUSD M5 history, and forward-test on a demo account before
+  ever attaching to a real account - same rule as any new EA, doubly so
+  here.
+- Set `InpBrokerUtcOffsetHours` to your broker server's offset from UTC
+  (varies by broker, commonly GMT+2 or GMT+3) - the session and hour
+  filters are computed in UTC and need this to line up correctly.
+- **The 0.06 and 0.08 lot-step files are here because they were
+  requested, not because they're recommended.** Backtested on the same
+  5-year data: 0.05/$100 gives +1,755.84% with -34.58% drawdown; 0.06
+  gives +5,486.25% with -48.63% drawdown; 0.08 gives +12,897.97% with
+  -62.19% drawdown. Past a lot-step of roughly 0.02-0.03, this is compound
+  growth outrunning what any retail account can actually execute - by the
+  time equity reaches the tens of thousands, the required lot size per
+  trade implies notional exposure and order sizes real market liquidity
+  and broker margin limits won't support, and the backtest doesn't model
+  that ceiling. `config/config.yaml`'s default (0.02) is the tested,
+  reasoned choice; 0.05+ is included on request but not endorsed.
+
 ## Strategy
 
 See the docstring in `gold_bot/strategy.py` for full rationale. Summary:
