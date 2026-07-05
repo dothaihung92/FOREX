@@ -83,6 +83,43 @@ regime. It's now the default (`min_trend_strength_pct: 0.0256` in
 | Total return (equity_step, $500) | +61.62% | **+109.39%** |
 | Max drawdown | -14.13% | **-8.79%** |
 
+### Second round on the filtered trade set - one more real filter, one overfit trap avoided
+
+Ran the same losing-trade analysis again on the new 173-trade set (after
+the EMA-gap filter) to check for further gains. Three more candidates,
+each backtested before deciding:
+
+- **Skip hour=9 (UTC) entries**: this hour sits inside the London session
+  window but had a 20% win rate (n=10) vs. 35-58% for other hours -
+  plausibly because common EU/UK scheduled data releases (PMI, ZEW, etc.)
+  land around 09:00-09:30 UTC and whipsaw price right as the
+  pullback/momentum signal fires. PF 2.10 -> **2.35**, +109.39% ->
+  **+127.78%**, drawdown -8.79% -> -8.6%. **Adopted** as
+  `excluded_hours: [9]` in `config/config.yaml`.
+- **Skip lowest-ATR-quartile entries** (retested on the filtered set): no
+  real effect (PF 2.10 -> 2.12) - discarded again.
+- **Skip weak calendar months** (June/February/December had the worst win
+  rates in this dataset): looked great in isolation (PF 2.10 -> 2.44) and
+  even better combined with the other two filters (PF 3.18, +197.24%) -
+  **deliberately NOT adopted**. With only 5 years of data, each calendar
+  month has just 5 observations - nowhere near enough to distinguish a
+  real seasonal effect from noise in one particular historical window,
+  unlike the EMA-gap and hour-of-day filters which had much larger samples
+  and a plausible mechanism. Flagging a good-looking backtest result as
+  probably fake is exactly the discipline this project has tried to keep -
+  don't add this filter without many more years of data confirming it.
+
+Current defaults (`min_trend_strength_pct: 0.0256` + `excluded_hours: [9]`)
+give, full 5-year backtest:
+
+| Metric | Value |
+|---|---|
+| Trades | 163 |
+| Win rate | 51.53% |
+| Profit factor | **2.35** |
+| Total return (equity_step, $500) | **+127.78%** |
+| Max drawdown | -8.6% |
+
 ### Mean-reversion experiment (disabled by default - read before enabling)
 
 `gold_bot/strategy.py` also contains a Bollinger Band mean-reversion rule
@@ -203,23 +240,23 @@ trading use identical logic:
 ### $500 account backtest (current config defaults)
 
 With `backtest.initial_balance: 500`, the `equity_step` sizing above, and
-the trend-strength filter described earlier, the full 5-year real-data
-backtest gives:
+both the trend-strength and hour-of-day filters described earlier, the
+full 5-year real-data backtest gives:
 
 | Metric | Value |
 |---|---|
-| Trades | 173 |
-| Win rate | 49.71% |
-| Profit factor | 2.10 |
-| Total return | +109.39% / 5 years ($500 → $1,046.93) |
-| Max drawdown | -8.79% |
+| Trades | 163 |
+| Win rate | 51.53% |
+| Profit factor | 2.35 |
+| Total return | +127.78% / 5 years ($500 → $1,138.90) |
+| Max drawdown | -8.6% |
 
 (The `equity_step` vs. `percent_risk` sizing comparison table below predates
-the trend-strength filter - it was run on the 264-trade signal set to
-choose the sizing parameters. The filter changes which trades fire, not how
-lots are sized, so the sizing conclusion - `equity_step 0.02/$100` wins on
+both filters - it was run on the original 264-trade signal set to choose
+the sizing parameters. The filters change which trades fire, not how lots
+are sized, so the sizing conclusion - `equity_step 0.02/$100` wins on
 risk-adjusted terms - still holds, but the absolute numbers below are from
-before the filter and are superseded by the table above.)
+before the filters and are superseded by the table above.)
 
 This sizing choice came from grid-searching the `equity_step` parameters
 themselves (`base_lot`/`lot_step` of 0.01 vs 0.02, `equity_step_usd` of 50

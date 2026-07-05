@@ -36,6 +36,7 @@ class StrategyConfig:
     mr_atr_tp_mult: float
     enable_mean_reversion: bool = False
     min_trend_strength_pct: float = 0.0  # skip trend entries when EMA fast/slow gap is below this % of price
+    excluded_hours: list[int] = field(default_factory=list)  # skip entries starting in these UTC hours
 
 
 @dataclass

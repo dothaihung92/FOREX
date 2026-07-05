@@ -154,6 +154,11 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
 
     session_ok = out.index.to_series().apply(lambda ts: in_session(ts, sessions))
 
+    # Excludes specific UTC hours found to underperform on real data (e.g.
+    # hour 9 coincides with common EU/UK scheduled data releases, which
+    # tend to produce whipsaws right as our pullback/momentum signal fires).
+    hour_ok = ~out.index.hour.isin(cfg.excluded_hours)
+
     trend_long = (
         uptrend
         & recent_oversold.shift(1).fillna(False)
@@ -162,6 +167,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & (close > out["ema_fast"])
         & session_ok
         & trend_established
+        & hour_ok
     )
     trend_short = (
         downtrend
@@ -170,6 +176,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & macd_falling
         & (close < out["ema_fast"])
         & session_ok
+        & hour_ok
         & trend_established
     )
 

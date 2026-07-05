@@ -90,3 +90,19 @@ def test_trend_strength_filter_disabled_at_zero_threshold(synthetic_ohlc):
     trend_rows = result[result["signal_type"] == "trend"]
     if len(trend_rows):
         assert (trend_rows["trend_strength_pct"] > 0.0).all()
+
+
+def test_excluded_hours_blocks_entries_in_that_hour(synthetic_ohlc):
+    cfg = replace(STRATEGY_CFG, excluded_hours=[synthetic_ohlc.index[0].hour])
+    result = generate_signals(synthetic_ohlc, cfg, ALL_DAY_SESSION)
+    excluded_rows = result[result.index.hour == cfg.excluded_hours[0]]
+    assert (excluded_rows["signal_type"] != "trend").all()
+
+
+def test_excluded_hours_empty_by_default_does_not_block_anything():
+    assert StrategyConfig(
+        ema_fast=50, ema_slow=200, rsi_period=14, rsi_oversold=30, rsi_overbought=70,
+        rsi_pullback_level=45, atr_period=14, atr_sl_mult=1.5, atr_tp_mult=2.5,
+        htf_timeframe="M15", htf_ema_period=100, adx_period=14, adx_threshold=20,
+        bb_period=20, bb_std_mult=2.0, mr_atr_sl_mult=1.5, mr_atr_tp_mult=1.5,
+    ).excluded_hours == []
