@@ -232,6 +232,35 @@ comparison (not merged into the codebase - all lost badly):
 | Liquidity sweep + HTF trend filter | 0.77 | account wiped out |
 | VWAP bounce (daily-anchored) | 0.74 | account wiped out |
 
+### "Catch the top/bottom" reversal methods - all tested, all worse still
+
+A second sweep specifically of the popular top/bottom-picking reversal
+methods, run through the identical engine, risk management
+(`fixed_capital_percent_risk` 2% of $500), ATR stop/target/trailing, and
+London/NY session filter as the main strategy:
+
+| Method | Trades | Win % | Profit factor |
+|---|---|---|---|
+| **Main trend-pullback strategy (baseline)** | **163** | **51.5%** | **1.69** |
+| RSI 70/30 cross-back reversal | 2,928 | 35.9% | 0.77 |
+| RSI 80/20 cross-back reversal (stricter) | 564 | 34.6% | 0.71 |
+| Bollinger(20,2) band fade | 4,653 | 34.8% | 0.75 |
+| Pin bar (wick >60%) at 20-bar high/low | 3,187 | 35.1% | 0.72 |
+| Engulfing candle at 20-bar high/low | 2,489 | 36.1% | 0.79 |
+| RSI divergence at 50-bar price extreme | 3,244 | 36.0% | 0.75 |
+| Stochastic 80/20 cross-back reversal | 4,783 | 34.1% | 0.73 |
+| Double top/bottom retest + rejection candle | 4,633 | 34.6% | 0.72 |
+
+Every reversal method landed in a remarkably tight band: 34-36% win rate,
+profit factor 0.71-0.79, all of which wipe the account many times over
+across the 5-year test. Even making the extreme stricter (RSI 80/20
+instead of 70/30 - fewer, "higher-conviction" signals) did not lift the
+win rate at all. The structural reason is simple: gold on M5 trends hard,
+so "price at a local extreme" is far more often trend continuation than a
+top/bottom, and a counter-trend entry with a fixed-multiple ATR stop gets
+run over. Any method marketed as picking gold tops with a high win rate
+should be assumed false until it survives this exact test.
+
 Adding the same HTF-trend filter used by the main strategy to ORB,
 liquidity-sweep, and PDH/PDL breakout did not rescue any of them (profit
 factor stayed under 1). This is a useful negative result: it shows the
