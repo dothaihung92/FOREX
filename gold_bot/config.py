@@ -37,6 +37,11 @@ class StrategyConfig:
     enable_mean_reversion: bool = False
     min_trend_strength_pct: float = 0.0  # skip trend entries when EMA fast/slow gap is below this % of price
     excluded_hours: list[int] = field(default_factory=list)  # skip entries starting in these UTC hours
+    require_htf2_confirmation: bool = False  # 3rd timeframe (htf2) trend must also agree - see README "Confluence filters"
+    htf2_timeframe: str = "H1"
+    htf2_ema_period: int = 100
+    require_atr_expansion: bool = False  # ATR must be above its own rolling mean (volatility expanding, not contracting)
+    atr_expansion_period: int = 20
 
 
 @dataclass

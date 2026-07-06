@@ -22,6 +22,15 @@ strategy:
   min_trend_strength_pct: 0.0256  # bỏ lệnh khi EMA fast/slow còn quá sát nhau (trend chưa rõ) - kiểm chứng trên cả train/test, xem README
   excluded_hours: [9]      # 9h UTC hay trùng giờ ra tin EU/UK, thắng ít - xem README
 
+  # Confluence filters (kiểm chứng độc lập trên cả train 2020-2023 và test
+  # 2023-2025 - profit factor và drawdown đều cải thiện ở cả hai giai đoạn,
+  # xem README "Confluence filters"). Đổi lấy ít lệnh hơn.
+  require_htf2_confirmation: true   # khung H1 phải cùng hướng xu hướng M5/M15
+  htf2_timeframe: "H1"
+  htf2_ema_period: 100
+  require_atr_expansion: true       # ATR hiện tại phải cao hơn trung bình 20 nến gần nhất (biến động đang tăng)
+  atr_expansion_period: 20
+
   # Regime switch: below adx_threshold the market is ranging, so the
   # trend-pullback rules above are disabled and mean-reversion rules below
   # take over instead. At/above threshold, trend-pullback rules apply.

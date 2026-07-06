@@ -106,3 +106,30 @@ def test_excluded_hours_empty_by_default_does_not_block_anything():
         htf_timeframe="M15", htf_ema_period=100, adx_period=14, adx_threshold=20,
         bb_period=20, bb_std_mult=2.0, mr_atr_sl_mult=1.5, mr_atr_tp_mult=1.5,
     ).excluded_hours == []
+
+
+def test_htf2_confirmation_disabled_by_default(synthetic_ohlc):
+    assert STRATEGY_CFG.require_htf2_confirmation is False
+    result = generate_signals(synthetic_ohlc, STRATEGY_CFG, ALL_DAY_SESSION)
+    assert "htf2_trend" in result.columns
+
+
+def test_htf2_confirmation_blocks_entries_against_h1_trend(synthetic_ohlc):
+    cfg = replace(STRATEGY_CFG, require_htf2_confirmation=True)
+    result = generate_signals(synthetic_ohlc, cfg, ALL_DAY_SESSION)
+    trend_rows = result[result["signal_type"] == "trend"]
+    longs = trend_rows[trend_rows["signal"] == 1]
+    shorts = trend_rows[trend_rows["signal"] == -1]
+    if len(longs):
+        assert (longs["htf2_trend"] > 0).all()
+    if len(shorts):
+        assert (shorts["htf2_trend"] < 0).all()
+
+
+def test_atr_expansion_filter_blocks_entries_when_atr_not_expanding(synthetic_ohlc):
+    cfg = replace(STRATEGY_CFG, require_atr_expansion=True, atr_expansion_period=20)
+    result = generate_signals(synthetic_ohlc, cfg, ALL_DAY_SESSION)
+    trend_rows = result[result["signal_type"] == "trend"]
+    if len(trend_rows):
+        atr_ma = result["atr"].rolling(cfg.atr_expansion_period).mean()
+        assert (trend_rows["atr"] > atr_ma.loc[trend_rows.index]).all()

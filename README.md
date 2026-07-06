@@ -150,8 +150,11 @@ each backtested before deciding:
   probably fake is exactly the discipline this project has tried to keep -
   don't add this filter without many more years of data confirming it.
 
-Current defaults (`min_trend_strength_pct: 0.0256` + `excluded_hours: [9]`)
-give, full 5-year backtest:
+`min_trend_strength_pct: 0.0256` + `excluded_hours: [9]` (both still in
+`config/config.yaml`, but predating the confluence filters and
+fixed-capital sizing added later - see "Confluence filters" and
+"Fixed-capital sizing" below for what's actually in the current default)
+give, full 5-year backtest with the then-current `equity_step` sizing:
 
 | Metric | Value |
 |---|---|
@@ -302,6 +305,58 @@ could keep opening new trades even after the account was wiped out,
 never converging to a stop. It now refuses to open any new trade once
 equity reaches zero or below.
 
+### Confluence filters - stacking independent signals for higher-quality entries
+
+Rather than swap the entry pattern (which the sweeps above show doesn't
+transfer the edge), a set of *additional* confirmation filters were tested
+on top of the existing entry, requiring several independent signals to
+agree before firing - the idea being fewer, higher-conviction trades
+rather than more trades:
+
+| Extra filter added to main strategy | Trades | Win % | PF | Return/5yr | Max DD |
+|---|---|---|---|---|---|
+| None (baseline) | 163 | 51.5% | 1.69 | +55.8% | -12.7% |
+| 3rd timeframe (H1) trend alignment | 137 | 54.0% | 1.91 | +55.6% | -9.97% |
+| ADX ≥ threshold (trending regime required) | 129 | 50.4% | 1.67 | +41.8% | -8.42% |
+| ADX rising | 35 | 62.9% | 2.80 | +25.3% | -3.89% |
+| Confirmation candle (signal bar closes in trend direction) | 163 | 51.5% | 1.69 | +55.8% | -12.7% |
+| ATR expanding (volatility above its own 20-bar average) | 154 | 53.3% | 1.82 | +60.2% | -10.8% |
+| RSI(21) agrees with direction | 154 | 52.0% | 1.73 | +55.3% | -11.4% |
+| Not overextended from EMA-fast (≤1 ATR) | 130 | 50.8% | 1.52 | +35.2% | -14.7% |
+| HTF(M15) RSI not against direction | 162 | 51.2% | 1.65 | +52.7% | -12.7% |
+| **H1 alignment + ATR expanding (adopted)** | **131** | **55.0%** | **2.01** | **+57.2%** | **-9.97%** |
+
+Two individually-promising results were set aside rather than adopted:
+"ADX rising" alone hits PF 2.80 but only fires 35 times in 5 years - too
+small a sample to trust without a lot more data (a handful of lucky
+trades can produce a PF that high by chance). "Confirmation candle" did
+literally nothing (identical numbers to baseline) because the RSI
+cross-up/cross-down condition already implies the signal bar closed in
+the trend direction most of the time - it's a redundant filter, not a
+real confirmation.
+
+**H1 alignment + ATR expanding** was the strongest genuine combination and
+was validated the same way every other filter in this project has been -
+independently on the train (2020-08 to 2023-08) and test (2023-08 to
+2025-08) regimes, not just the full 5-year blend:
+
+| Regime | Baseline PF | +Filter PF | Baseline Max DD | +Filter Max DD |
+|---|---|---|---|---|
+| Train (2020-2023) | 1.29 | **1.51** | -12.7% | **-9.97%** |
+| Test (2023-2025) | 2.55 | **2.99** | -5.25% | **-3.25%** |
+
+Both profit factor and max drawdown improved in *both* regimes
+independently, not just on average - the bar this project requires before
+trusting a filter (see the trend-strength and hour-exclusion filters
+earlier, and contrast with the rejected calendar-seasonality filter).
+This is now `require_htf2_confirmation: true` and `require_atr_expansion:
+true` in `config/config.yaml` (both default to `false` in
+`StrategyConfig` so existing configs are unaffected unless explicitly
+opted in). The cost is fewer trades (131 vs. 163 over 5 years, roughly
+20% fewer) in exchange for a meaningfully better win rate, profit factor,
+and drawdown - a reasonable trade for a small ($500) account where
+drawdown recovery matters more than trade frequency.
+
 ## Risk management
 
 `gold_bot/risk_manager.py` centralizes every risk rule so backtest and live
@@ -403,6 +458,21 @@ day 1 or year 4. If you want higher return and are willing to accept the
 real risk of a compounding blowup, `percent_risk` or `equity_step` are
 still available; they are not recommended for accounts under ~$2,000 where
 a single bad streak is catastrophic rather than a paper loss.
+
+**The actual current `config/config.yaml` default** combines this sizing
+with the confluence filters from "Confluence filters" above
+(`require_htf2_confirmation` + `require_atr_expansion`, both `true`),
+which was not yet the case in the sizing comparison table above (that
+table used only the entry logic, not the confluence filters). With both
+turned on:
+
+| Metric | Value |
+|---|---|
+| Trades | 131 |
+| Win rate | 54.96% |
+| Profit factor | **2.01** |
+| Total return (fixed_capital_percent_risk 2%, $500) | +57.21% / 5 years ($500 → $779) |
+| Max drawdown | -9.97% |
 
 ### $500 account backtest (legacy `equity_step` numbers - superseded above)
 

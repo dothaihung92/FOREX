@@ -21,6 +21,12 @@ only fires when several independent signals agree:
    high-liquidity windows (London / New York), since gold's 5-minute
    moves outside these windows are dominated by spread/noise rather than
    real momentum.
+5. Optional confluence filters (`require_htf2_confirmation`,
+   `require_atr_expansion`, off by default): a 3rd timeframe (H1) trend
+   check and an ATR-expanding-volatility check. Both validated
+   independently on train and test regimes to raise profit factor and
+   lower drawdown at the cost of fewer trades - see README "Confluence
+   filters" for the comparison.
 
 Exits use ATR-based stop loss / take profit, computed by the risk manager.
 
@@ -113,6 +119,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     macd_line, signal_line, hist = macd(close)
     out["macd_hist"] = hist
     out["htf_trend"] = _htf_trend(out, cfg.htf_timeframe, cfg.htf_ema_period)
+    out["htf2_trend"] = _htf_trend(out, cfg.htf2_timeframe, cfg.htf2_ema_period)
     out["adx"] = adx(out, cfg.adx_period)
     bb_upper, bb_mid, bb_lower = bollinger_bands(close, cfg.bb_period, cfg.bb_std_mult)
     out["bb_upper"], out["bb_mid"], out["bb_lower"] = bb_upper, bb_mid, bb_lower
@@ -159,6 +166,19 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     # tend to produce whipsaws right as our pullback/momentum signal fires).
     hour_ok = ~out.index.hour.isin(cfg.excluded_hours)
 
+    # Optional 3rd-timeframe (htf2, default H1) confluence and ATR-expansion
+    # filters - both validated independently on the 2020-2023 train and
+    # 2023-2025 test regimes (profit factor and drawdown both improved in
+    # each), see README "Confluence filters". Off by default (require_*
+    # flags) so existing configs keep their current behaviour; turn on to
+    # trade fewer, higher-quality signals.
+    htf2_ok_long = (out["htf2_trend"] > 0) if cfg.require_htf2_confirmation else True
+    htf2_ok_short = (out["htf2_trend"] < 0) if cfg.require_htf2_confirmation else True
+    if cfg.require_atr_expansion:
+        atr_expanding = out["atr"] > out["atr"].rolling(cfg.atr_expansion_period).mean()
+    else:
+        atr_expanding = True
+
     trend_long = (
         uptrend
         & recent_oversold.shift(1).fillna(False)
@@ -168,6 +188,8 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & session_ok
         & trend_established
         & hour_ok
+        & htf2_ok_long
+        & atr_expanding
     )
     trend_short = (
         downtrend
@@ -178,6 +200,8 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
         & session_ok
         & hour_ok
         & trend_established
+        & htf2_ok_short
+        & atr_expanding
     )
 
     out["signal"] = 0
