@@ -21,6 +21,14 @@
 //| README for the full risk/return tradeoff tested at different        |
 //| LotStep values before using this in a live account.                |
 //|                                                                    |
+//| *** DEPRECATED / NOT RECOMMENDED ***: this equity_step sizing        |
+//| COMPOUNDS lot size off accumulated profit. A real MT5 Strategy       |
+//| Tester run using this exact sizing hit 100% drawdown because early   |
+//| wins inflated the lot size right before a losing streak hit it.       |
+//| Use GoldBot_FixedCapitalRisk.mq5 instead - same strategy, sizing      |
+//| anchored to a fixed capital amount that never inflates from profit.  |
+//| See README "Fixed-capital sizing" for the full comparison.           |
+//|                                                                    |
 //| IMPORTANT: this file was written and reasoned through carefully to |
 //| match the already-validated Python backtest logic, but it has NOT  |
 //| been compiled or run in MetaTrader (no Windows/MT5 available in    |

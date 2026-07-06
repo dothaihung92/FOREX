@@ -14,14 +14,24 @@ money.** Past backtest performance never guarantees future results.
 
 ## Native MQL5 Expert Advisor (paste directly into MT5)
 
-`mql5/GoldBot_LotStep_0.05.mq5`, `_0.06.mq5`, and `_0.08.mq5` are a native
-MetaTrader 5 EA port of the same strategy (trend filter, RSI pullback, MACD
-confirmation, session filter, trend-strength filter, hour-9-UTC exclusion,
-ATR stop/target/trailing, `equity_step` sizing) - no Python needed, just
-open in MetaEditor, compile, and attach to an XAUUSD M5 chart. The three
-files are identical except for `InpBaseLot`/`InpLotStep`/`InpMinLot`.
+`mql5/GoldBot_FixedCapitalRisk.mq5` is the **recommended** native MetaTrader
+5 EA port of the strategy (trend filter, RSI pullback, MACD confirmation,
+session filter, trend-strength filter, hour-9-UTC exclusion, ATR
+stop/target/trailing, `fixed_capital_percent_risk` sizing) - no Python
+needed, just open in MetaEditor, compile, and attach to an XAUUSD M5 chart.
+Sizing is anchored to a fixed `InpBaseEquity` ($500 by default) and
+`InpRiskPercentPerTrade` (2% by default), never the live account equity -
+see "Fixed-capital sizing" above for why.
 
-**Read this before using them:**
+`mql5/GoldBot_LotStep_0.05.mq5`, `_0.06.mq5`, and `_0.08.mq5` are an older
+port using `equity_step` sizing (lot compounds off accumulated profit).
+**Not recommended** - a real MT5 Strategy Tester run on this exact sizing
+hit 100% drawdown because early wins inflated the lot size right before a
+losing streak hit it. Kept in the repo for reference only; use
+`GoldBot_FixedCapitalRisk.mq5` instead. The three legacy files are
+identical except for `InpBaseLot`/`InpLotStep`/`InpMinLot`.
+
+**Read this before using any of them:**
 - These files were written to match the validated Python logic but have
   **not been compiled or run in MetaTrader** (no Windows/MT5 in the
   authoring environment). Compile in MetaEditor, run in Strategy Tester

@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| GoldBot_LotStep_0.06.mq5                                          |
+//| GoldBot_FixedCapitalRisk.mq5                                      |
 //| XAUUSD M5 trend-pullback EA, ported from the Python gold_bot      |
 //| project (gold_bot/strategy.py + risk_manager.py).                 |
 //|                                                                    |
@@ -14,20 +14,18 @@
 //| hours found to underperform (default: 9, common EU/UK data-release |
 //| time).                                                              |
 //|                                                                    |
-//| Sizing: "equity_step" - lot starts at BaseLot at BaseEquity, adds   |
-//| LotStep for every EquityStepUsd of profit, removes LotStep for      |
-//| every EquityStepUsd of loss, floored at MinLot. This does NOT       |
-//| normalize risk against the ATR stop distance - see the project      |
-//| README for the full risk/return tradeoff tested at different        |
-//| LotStep values before using this in a live account.                |
-//|                                                                    |
-//| *** DEPRECATED / NOT RECOMMENDED ***: this equity_step sizing        |
-//| COMPOUNDS lot size off accumulated profit. A real MT5 Strategy       |
-//| Tester run using this exact sizing hit 100% drawdown because early   |
-//| wins inflated the lot size right before a losing streak hit it.       |
-//| Use GoldBot_FixedCapitalRisk.mq5 instead - same strategy, sizing      |
-//| anchored to a fixed capital amount that never inflates from profit.  |
-//| See README "Fixed-capital sizing" for the full comparison.           |
+//| Sizing: "fixed_capital_percent_risk" - lot is recomputed every      |
+//| trade from InpRiskPercentPerTrade of a FIXED InpBaseEquity (never   |
+//| the live/floating account equity), normalized against the ATR stop |
+//| distance so dollar risk per trade stays constant. This REPLACES    |
+//| the GoldBot_LotStep_0.0X.mq5 files' "equity_step" sizing, which     |
+//| compounds lot size off accumulated profit - a real MT5 Strategy    |
+//| Tester run on that mode hit 100% drawdown because early wins       |
+//| inflated the lot size right before a losing streak hit it. This    |
+//| mode can't do that: lot size only ever depends on the fixed        |
+//| InpBaseEquity and the current ATR stop distance, never on how much |
+//| the account has actually won or lost. See README "Fixed-capital    |
+//| sizing" for the full before/after comparison.                      |
 //|                                                                    |
 //| IMPORTANT: this file was written and reasoned through carefully to |
 //| match the already-validated Python backtest logic, but it has NOT  |
@@ -66,18 +64,15 @@ input string   InpSession2Start        = "12:30";
 input string   InpSession2End          = "16:00";
 input int      InpBrokerUtcOffsetHours = 0;        // broker server time minus UTC (check your broker!)
 
-input group "=== Risk / equity_step sizing ==="
-input double   InpBaseEquity           = 500.0;
-input double   InpBaseLot              = 0.06;
-input double   InpLotStep              = 0.06;
-input double   InpEquityStepUsd        = 100.0;
-input double   InpMinLot               = 0.06;
+input group "=== Risk / fixed_capital_percent_risk sizing ==="
+input double   InpBaseEquity           = 500.0;    // FIXED capital used for sizing - never the live account equity
+input double   InpRiskPercentPerTrade  = 2.0;       // % of InpBaseEquity risked per trade (see README comparison table)
 input bool     InpUseTrailingStop      = true;
 input double   InpTrailingAtrMult      = 1.0;
 input int      InpMaxTradesPerDay      = 4;
-input double   InpMaxDailyLossPct      = 3.0;
+input double   InpMaxDailyLossPct      = 3.0;       // circuit breaker, also computed against InpBaseEquity - see CanOpenTrade()
 input int      InpMaxConcurrentTrades  = 1;
-input int      InpMagicNumber          = 20240501;
+input int      InpMagicNumber          = 20240502;
 input int      InpSlippagePoints       = 50;
 
 CTrade trade;
@@ -180,15 +175,27 @@ bool InSession(datetime tUtc)
 }
 
 //+------------------------------------------------------------------+
-//| equity_step lot sizing - same math as gold_bot/risk_manager.py    |
+//| fixed_capital_percent_risk lot sizing - same math as              |
+//| gold_bot/risk_manager.py's _position_size_lots_percent_risk(),     |
+//| except the reference capital is ALWAYS InpBaseEquity, never the   |
+//| live AccountInfoDouble(ACCOUNT_EQUITY). This is the whole point:   |
+//| a winning streak must never inflate the lot size before a losing   |
+//| streak hits it (see file header comment for the real-account       |
+//| blowup this replaced).                                             |
 //+------------------------------------------------------------------+
-double GetLots()
+double GetLots(double entryPrice, double stopPrice)
 {
-   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   double steps = (equity - InpBaseEquity) / InpEquityStepUsd;
-   int stepsInt = (int)steps; // (int) truncates toward zero in MQL5, matching Python's int()
-   double lots = InpBaseLot + InpLotStep*stepsInt;
-   if(lots < InpMinLot) lots = InpMinLot;
+   double stopDistance = MathAbs(entryPrice - stopPrice);
+   if(stopDistance <= 0) return 0.0;
+
+   double contractSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE);
+   if(contractSize <= 0) contractSize = 100.0; // XAUUSD standard lot = 100 oz fallback
+
+   double riskAmount = InpRiskPercentPerTrade/100.0 * InpBaseEquity;
+   double lossPerLot = stopDistance * contractSize;
+   if(lossPerLot <= 0) return 0.0;
+
+   double lots = riskAmount / lossPerLot;
 
    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -248,10 +255,14 @@ int CountOpenPositions()
    return count;
 }
 
+//+------------------------------------------------------------------+
+//| Daily-loss circuit breaker uses InpBaseEquity too (not live        |
+//| equity) so a winning streak can't quietly raise the $ loss the     |
+//| account is allowed to take before trading stops for the day.       |
+//+------------------------------------------------------------------+
 bool CanOpenTrade()
 {
-   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   if(equity <= 0) return false;
+   if(InpBaseEquity <= 0) return false;
 
    if(CountOpenPositions() >= InpMaxConcurrentTrades) return false;
 
@@ -260,7 +271,7 @@ bool CanOpenTrade()
 
    if(tradesToday >= InpMaxTradesPerDay) return false;
 
-   double maxLoss = -MathAbs(InpMaxDailyLossPct)/100.0 * equity;
+   double maxLoss = -MathAbs(InpMaxDailyLossPct)/100.0 * InpBaseEquity;
    if(dailyPnl <= maxLoss) return false;
 
    return true;
@@ -375,12 +386,12 @@ void CheckEntrySignal()
    if(!longSignal && !shortSignal) return;
 
    int direction = longSignal ? 1 : -1;
-   double lots = GetLots();
-   if(lots<=0) return;
-
    double price = (direction==1) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double sl = price - direction*InpAtrSlMult*atr1;
    double tp = price + direction*InpAtrTpMult*atr1;
+
+   double lots = GetLots(price, sl);
+   if(lots<=0) return;
 
    if(direction==1)
       trade.Buy(lots, _Symbol, price, sl, tp, "GoldBot long");
