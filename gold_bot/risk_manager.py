@@ -50,28 +50,44 @@ class RiskManager:
 
     def can_open_trade(self, current_day: date, open_positions: int) -> tuple[bool, str]:
         self.daily.reset_if_new_day(current_day)
-        if self.equity <= 0:
+        reference_equity = self._risk_reference_equity()
+        if reference_equity <= 0:
             return False, "equity depleted"
         if open_positions >= self.cfg.max_concurrent_trades:
             return False, "max_concurrent_trades reached"
         if self.daily.trades_opened >= self.cfg.max_trades_per_day:
             return False, "max_trades_per_day reached"
-        max_loss = -abs(self.cfg.max_daily_loss_pct) / 100.0 * self.equity
+        max_loss = -abs(self.cfg.max_daily_loss_pct) / 100.0 * reference_equity
         if self.daily.realized_pnl <= max_loss:
             return False, "max_daily_loss_pct breached"
         return True, ""
 
+    def _risk_reference_equity(self) -> float:
+        """Capital used for sizing/risk-limit math. Fixed-capital modes
+        deliberately ignore accumulated profit/loss (self.equity) so a
+        winning streak never inflates position size right before a losing
+        streak - see README "Fixed-capital sizing" for why this matters."""
+        if self.cfg.sizing_mode == "fixed_capital_percent_risk":
+            return self.cfg.base_equity
+        return self.equity
+
     def position_size_lots(self, entry_price: float, stop_price: float) -> float:
         if self.cfg.sizing_mode == "equity_step":
             return self._position_size_lots_equity_step()
+        if self.cfg.sizing_mode == "fixed_lot":
+            return self.cfg.base_lot
+        # "percent_risk" and "fixed_capital_percent_risk" share the same ATR-
+        # normalized math, differing only in which equity anchors the risk %.
         return self._position_size_lots_percent_risk(entry_price, stop_price)
 
     def _position_size_lots_percent_risk(self, entry_price: float, stop_price: float) -> float:
-        """Lots sized so that a stop-out risks exactly risk_per_trade_pct of equity."""
+        """Lots sized so that a stop-out risks exactly risk_per_trade_pct of
+        the reference capital (live equity for "percent_risk", the fixed
+        starting capital for "fixed_capital_percent_risk")."""
         stop_distance = abs(entry_price - stop_price)
         if stop_distance <= 0:
             return 0.0
-        risk_amount = self.cfg.risk_per_trade_pct / 100.0 * self.equity
+        risk_amount = self.cfg.risk_per_trade_pct / 100.0 * self._risk_reference_equity()
         loss_per_lot = stop_distance * CONTRACT_SIZE
         if loss_per_lot <= 0:
             return 0.0
@@ -88,6 +104,9 @@ class RiskManager:
         the stop distance - the lot size is fixed by the equity milestone
         regardless of how far away the ATR-based stop is, so the dollar
         risk of a given trade varies with market volatility at entry time.
+        This mode COMPOUNDS by design (lot grows with accumulated profit) -
+        see README for why that let a real MT5 test wipe out an account
+        that a naive read of average backtest drawdown didn't make obvious.
         """
         steps = (self.equity - self.cfg.base_equity) / self.cfg.equity_step_usd
         lots = self.cfg.base_lot + self.cfg.lot_step * int(steps)

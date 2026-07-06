@@ -42,7 +42,7 @@ sessions:                  # giờ UTC - vàng biến động mạnh nhất khi 
     end: "16:00"
 
 risk:
-  risk_per_trade_pct: 1.0      # chỉ dùng khi sizing_mode: percent_risk
+  risk_per_trade_pct: 2.0      # dùng cho percent_risk và fixed_capital_percent_risk
   max_trades_per_day: 4
   max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
   max_concurrent_trades: 1
@@ -50,16 +50,27 @@ risk:
   trailing_atr_mult: 1.0  # tuned: tighter trailing locks in profit sooner, improves both return and drawdown
 
   # Cách tính khối lượng lệnh (lot):
-  #   percent_risk -> lot tính theo % vốn rủi ro mỗi lệnh (risk_per_trade_pct), tự
-  #                   động co giãn theo khoảng cách SL. An toàn hơn khi thua liên tục
-  #                   vì lot tự giảm theo equity một cách liên tục.
+  #   fixed_capital_percent_risk -> (MẶC ĐỊNH, AN TOÀN) lot tính theo % của vốn GỐC CỐ
+  #                   ĐỊNH (base_equity), KHÔNG bao giờ cộng dồn lãi/lỗ vào vốn tính lot.
+  #                   Tự động co giãn theo khoảng cách SL (ATR) để rủi ro $ mỗi lệnh luôn
+  #                   ổn định = risk_per_trade_pct% của base_equity, dù tài khoản đang lãi
+  #                   hay lỗ. Đây là cách sửa lỗi "vốn ảo tăng lên rồi cháy tài khoản thật"
+  #                   đã xảy ra khi test trên MT5 - xem README "Fixed-capital sizing".
+  #   percent_risk -> giống trên nhưng lot co giãn theo equity ĐANG CÓ (live/compounding).
+  #                   Lãi nhiều lot tự tăng, lỗ nhiều lot tự giảm - PHÙ HỢP nếu bạn chủ
+  #                   động muốn compound lãi, nhưng đây chính là cơ chế đã làm vốn "ảo"
+  #                   tăng lên rồi bị xóa sổ khi gặp chuỗi lệnh thua sau đó.
   #   equity_step  -> lot cố định theo mốc vốn: bắt đầu base_lot tại base_equity, cứ
   #                   lãi thêm equity_step_usd thì +lot_step, lỗ thì -lot_step (không
-  #                   dưới min_lot). KHÔNG tự chuẩn hóa rủi ro theo SL - rủi ro $ mỗi
-  #                   lệnh thay đổi theo biến động ATR tại thời điểm vào lệnh.
-  sizing_mode: equity_step
+  #                   dưới min_lot). KHÔNG tự chuẩn hóa rủi ro theo SL, VÀ compound theo
+  #                   lãi/lỗ - đây là mode đã gây cháy tài khoản thật trên MT5 (xem README).
+  #                   Không khuyến nghị dùng nếu tài khoản nhỏ ($500-$1000).
+  #   fixed_lot    -> lot cố định tuyệt đối (base_lot), không quan tâm equity hay SL.
+  #                   Đơn giản nhất nhưng rủi ro $ mỗi lệnh KHÔNG được chuẩn hóa theo SL -
+  #                   khi ATR giãn rộng, lệnh đó rủi ro nhiều $ hơn bình thường.
+  sizing_mode: fixed_capital_percent_risk
   base_equity: 500.0
-  base_lot: 0.02          # tuned: 0.02/$100 step gave the best profit-factor/drawdown tradeoff tested
+  base_lot: 0.02
   lot_step: 0.02
   equity_step_usd: 100.0
   min_lot: 0.02

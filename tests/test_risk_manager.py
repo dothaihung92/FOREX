@@ -117,3 +117,45 @@ def test_equity_step_sizing_ignores_stop_distance():
     lots_tight_stop = mgr.position_size_lots(2000.0, 1999.0)
     lots_wide_stop = mgr.position_size_lots(2000.0, 1950.0)
     assert lots_tight_stop == lots_wide_stop == 0.02
+
+
+FIXED_CAPITAL_CFG = replace(RISK_CFG, sizing_mode="fixed_capital_percent_risk", base_equity=500.0, risk_per_trade_pct=1.0)
+
+
+def test_fixed_capital_sizing_ignores_current_equity_after_wins():
+    # Equity grew to $2000 from wins, but lot size must stay anchored to the
+    # $500 base - this is the whole point of the mode: a winning streak
+    # must never inflate the position size that a losing streak then hits.
+    mgr = RiskManager(cfg=FIXED_CAPITAL_CFG, equity=2000.0)
+    entry, stop = 2000.0, 1995.0  # 5.0 price distance
+    lots = mgr.position_size_lots(entry, stop)
+    risk_amount = lots * 5.0 * 100.0
+    assert abs(risk_amount - 5.0) < 0.5  # 1% of the fixed $500 base, not $2000
+
+
+def test_fixed_capital_sizing_ignores_current_equity_after_losses():
+    mgr = RiskManager(cfg=FIXED_CAPITAL_CFG, equity=100.0)
+    entry, stop = 2000.0, 1995.0
+    lots = mgr.position_size_lots(entry, stop)
+    risk_amount = lots * 5.0 * 100.0
+    assert abs(risk_amount - 5.0) < 0.5  # still 1% of $500, not $100
+
+
+def test_fixed_capital_daily_loss_limit_uses_base_equity_not_live_equity():
+    mgr = RiskManager(cfg=FIXED_CAPITAL_CFG, equity=5000.0)  # equity ballooned from wins
+    today = date(2024, 1, 1)
+    mgr.register_fill_pnl(today, -20.0)  # 4% of the $500 base, over the 3% limit
+    can_open, reason = mgr.can_open_trade(today, open_positions=0)
+    assert can_open is False
+    assert "max_daily_loss_pct" in reason
+
+
+FIXED_LOT_CFG = replace(RISK_CFG, sizing_mode="fixed_lot", base_lot=0.05)
+
+
+def test_fixed_lot_sizing_is_constant_regardless_of_equity_or_stop_distance():
+    mgr = RiskManager(cfg=FIXED_LOT_CFG, equity=50000.0)
+    assert mgr.position_size_lots(2000.0, 1995.0) == 0.05
+    assert mgr.position_size_lots(2000.0, 1900.0) == 0.05
+    mgr2 = RiskManager(cfg=FIXED_LOT_CFG, equity=10.0)
+    assert mgr2.position_size_lots(2000.0, 1995.0) == 0.05

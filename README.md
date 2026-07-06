@@ -251,28 +251,105 @@ trading use identical logic:
 - Optional ATR-based trailing stop that only ever moves in the trade's
   favor.
 - Position sizing, controlled by `risk.sizing_mode`:
-  - **`percent_risk`** (the textbook approach) — lot size computed so a
-    stop-out risks exactly `risk_per_trade_pct` of current equity. Risk is
-    normalized automatically: a wider ATR stop gets a smaller lot, a
-    tighter stop a bigger one, so dollar risk per trade stays constant.
-  - **`equity_step`** (current default, matches a $500-account request) —
+  - **`fixed_capital_percent_risk`** (current default) — same ATR-normalized
+    lot math as `percent_risk` below, but the reference capital is always
+    the fixed `base_equity` (e.g. $500), never the live/floating equity.
+    Profit and loss are still tracked (`self.equity`, shown in reports,
+    used for the daily-loss circuit breaker via `base_equity` too), they
+    just never feed back into the lot-size calculation. See "Fixed-capital
+    sizing" below for why this replaced `equity_step` as the default.
+  - **`percent_risk`** (the textbook compounding approach) — lot size
+    computed so a stop-out risks exactly `risk_per_trade_pct` of *current*
+    equity. Risk is normalized automatically against the stop distance
+    (wider ATR stop → smaller lot), but because it compounds, a winning
+    streak inflates the lot size right before a losing streak hits it —
+    same failure mode as `equity_step` below, just risk-normalized instead
+    of milestone-based.
+  - **`equity_step`** (legacy default, kept for backwards compatibility) —
     start at `base_lot` while equity is at `base_equity` ($500); add
     `lot_step` for every `equity_step_usd` ($100) of profit above that,
     remove `lot_step` for every $100 of loss, never going below `min_lot`.
     **This does not normalize risk against the stop distance** — the lot
     is fixed by the equity milestone alone, so the dollar risk of a given
     trade moves with ATR/volatility at entry time instead of staying
-    constant. `base_lot`/`lot_step`/`min_lot` were grid-searched on the
-    real 5-year dataset (see table below) and set to 0.02 - if gold's
-    price or volatility regime changes a lot from what's in
-    `data/XAUUSD_M5_real.csv`, re-run the backtest before trusting the
-    same lot-per-$100 step still risks a sane percentage of your account.
+    constant. It also **compounds**: lot size grows off accumulated profit,
+    which is what caused a real MT5 Strategy Tester account to blow up —
+    see "Fixed-capital sizing" below. Not recommended for small accounts.
+  - **`fixed_lot`** — a literal constant lot (`base_lot`), ignoring both
+    equity and stop distance entirely. Simplest option, but dollar risk per
+    trade is uncontrolled when ATR widens (a volatile entry risks more $
+    than a calm one, with no normalization at all).
 
-### $500 account backtest (current config defaults)
+### Fixed-capital sizing (why the default changed from `equity_step`)
 
-With `backtest.initial_balance: 500`, the `equity_step` sizing above, and
-both the trend-strength and hour-of-day filters described earlier, the
-full 5-year real-data backtest gives:
+A real MT5 Strategy Tester run on `GoldBot_LotStep_0.06.mq5` (compounding
+`equity_step` sizing, $500 starting balance) hit 100.26% max drawdown and
+stopped trading after only 30 trades, roughly a year into an 8-year test
+window. The cause wasn't a code bug: early wins pushed `equity_step`'s lot
+size up (it compounds by design), and when a losing streak followed
+(-$365.52 across 7 trades) it hit at the now-larger lot size, wiping the
+account. Any *aggregate* backtest drawdown number (e.g. -8.6% in the table
+below) is an average across the whole test — it says nothing about whether
+one specific bad stretch, hitting after a specific run of wins, can drive
+equity to zero. A real account can't survive that; a backtest average
+doesn't warn you about it.
+
+The fix: **stop computing lot size from floating/accumulated equity.**
+`fixed_capital_percent_risk` and `fixed_lot` both anchor position size to a
+capital number that never moves (`base_equity`), no matter how much the
+account has actually won or lost. Profit/loss is still tracked and
+reported — it just can't inflate the next trade's risk.
+
+Full 5-year real-data comparison, same signals/filters, `fixed_capital_percent_risk`:
+
+| Base capital | risk/trade | Trades | Win % | PF | Return/5yr | Max DD | Final equity |
+|---|---|---|---|---|---|---|---|
+| $500 | 1% | 163 | 51.5% | 1.66 | +27.4% | -6.6% | $637 |
+| $500 | 2% (**default**) | 163 | 51.5% | 1.69 | +55.8% | -12.7% | $779 |
+| $500 | 3% | 163 | 51.5% | 1.68 | +81.9% | -19.8% | $909 |
+| $500 | 5% | 161 | 52.2% | 1.72 | +142.1% | -28.2% | $1,210 |
+| $500 | 8% | 159 | 52.8% | 1.77 | +238.2% | -39.9% | $1,691 |
+| $500 | 10% | 159 | 52.8% | 1.77 | +298.6% | -49.5% | $1,993 |
+| $1000 | 1% | 163 | 51.5% | 1.69 | +27.9% | -6.4% | $1,279 |
+| $1000 | 2% | 163 | 51.5% | 1.71 | +58.1% | -12.6% | $1,581 |
+| $1000 | 3% | 162 | 51.9% | 1.71 | +85.9% | -19.3% | $1,859 |
+| $1000 | 5% | 161 | 52.2% | 1.74 | +145.0% | -28.1% | $2,450 |
+| $1000 | 8% | 159 | 52.8% | 1.77 | +239.3% | -39.7% | $3,393 |
+| $1000 | 10% | 159 | 52.8% | 1.78 | +301.6% | -49.2% | $4,016 |
+
+`$500`- and `$1000`-base results are near-identical in % terms at the same
+`risk_per_trade_pct`, as expected — this mode is scale-invariant since it
+never looks at live equity.
+
+For reference, `fixed_lot` (no ATR/equity normalization at all) on $500,
+and the old `equity_step 0.02/$100` (compounding) at the same $500 base:
+
+| Sizing | Trades | Win % | PF | Return/5yr | Max DD | Final equity |
+|---|---|---|---|---|---|---|
+| equity_step 0.02/$100 (legacy default, compounds) | 163 | 51.5% | **2.35** | **+127.8%** | -8.6% | $1,139 |
+| fixed_lot 0.02 | 163 | 51.5% | 1.97 | +56.5% | -8.6% | $782 |
+| fixed_capital_percent_risk 2% (new default) | 163 | 51.5% | 1.69 | +55.8% | -12.7% | $779 |
+
+**The honest tradeoff**: `equity_step`'s headline PF (2.35) and return
+(+127.8%) look better than the fixed-capital numbers because compounding
+lets winners size up — but that's exactly the mechanism that turned one bad
+losing streak into a total account wipeout on a real MT5 run. The
+fixed-capital numbers (PF ~1.7, +55.8%/5yr at 2%/trade) are lower but
+represent risk that stays bounded to a percentage of a number that never
+changes — a losing streak costs the same dollars whether it happens on
+day 1 or year 4. If you want higher return and are willing to accept the
+real risk of a compounding blowup, `percent_risk` or `equity_step` are
+still available; they are not recommended for accounts under ~$2,000 where
+a single bad streak is catastrophic rather than a paper loss.
+
+### $500 account backtest (legacy `equity_step` numbers - superseded above)
+
+These numbers are kept for history; the current default is
+`fixed_capital_percent_risk` (see "Fixed-capital sizing" above) since
+`equity_step` is the compounding mode responsible for a real MT5 account
+blowup. With `backtest.initial_balance: 500`, the `equity_step` sizing
+below, and both the trend-strength and hour-of-day filters described
+earlier, the full 5-year real-data backtest gives:
 
 | Metric | Value |
 |---|---|
