@@ -261,6 +261,29 @@ top/bottom, and a counter-trend entry with a fixed-multiple ATR stop gets
 run over. Any method marketed as picking gold tops with a high win rate
 should be assumed false until it survives this exact test.
 
+A follow-up idea - use the top/bottom signals not as entries but as an
+**early-exit filter** on the main strategy (close a long early when RSI
+hits overbought, or when price closes beyond the upper Bollinger band, on
+the theory that the extreme marks the end of the move) - was also tested
+and also failed, just mildly instead of catastrophically:
+
+| Exit rule added to main strategy | PF | Return/5yr | Max DD | Early exits |
+|---|---|---|---|---|
+| None (baseline) | **1.69** | **+55.8%** | **-12.7%** | 0 |
+| RSI ≥65 / ≤35 | 1.65 | +51.9% | -14.2% | 26 |
+| RSI ≥70 / ≤30 | 1.62 | +49.5% | -14.6% | 8 |
+| RSI ≥75 / ≤25 | 1.64 | +51.3% | -13.6% | 4 |
+| RSI ≥80 / ≤20 | 1.66 | +53.3% | -13.6% | 1 |
+| Close beyond Bollinger(20,2) | 1.60 | +47.6% | -14.0% | 29 |
+
+Every variant reduced both return and profit factor AND slightly worsened
+drawdown - the extremes the filter exits on are more often mid-trend
+strength (which the ATR trailing stop would have ridden further) than
+actual tops. The trailing stop already is the well-calibrated exit; adding
+a reversal-based exit on top only cuts winners short. Consistent with the
+entry-side sweep above: on gold M5, "price at an extreme" is not
+usable information, in either direction, at entry or at exit.
+
 Adding the same HTF-trend filter used by the main strategy to ORB,
 liquidity-sweep, and PDH/PDL breakout did not rescue any of them (profit
 factor stayed under 1). This is a useful negative result: it shows the
