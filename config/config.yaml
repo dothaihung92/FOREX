@@ -15,8 +15,8 @@ strategy:
   rsi_overbought: 70
   rsi_pullback_level: 50   # ngưỡng RSI xác nhận hồi phục trong xu hướng tăng (100-level cho xu hướng giảm)
   atr_period: 14
-  atr_sl_mult: 2.0         # SL rộng hơn giúp lệnh "thở" qua nhiễu M5, cải thiện profit factor rõ rệt khi tối ưu
-  atr_tp_mult: 2.5         # tighter trailing stop below usually exits before this TP anyway
+  atr_sl_mult: 1.8         # tỷ lệ TP:SL = 5:3, kiểm chứng trên cả train/test - xem README "R:R ratio"
+  atr_tp_mult: 3.0         # tighter trailing stop below usually exits before this TP anyway
   htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
   htf_ema_period: 100
   min_trend_strength_pct: 0.0256  # bỏ lệnh khi EMA fast/slow còn quá sát nhau (trend chưa rõ) - kiểm chứng trên cả train/test, xem README

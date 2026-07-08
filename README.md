@@ -399,6 +399,54 @@ Two conclusions worth keeping:
    fixed-capital risk table), not adding lower-quality entries - every
    variant of "more trades" tested in this project has ended at PF ≤ 1.1.
 
+### R:R ratio and pyramiding - one adopted, one rejected
+
+Two more pro-trader ideas were tested: (1) widen the reward:risk ratio to
+5:3 (~1.67, vs. the previous 2.5:2.0 ATR = 1.25) so winners pay more per
+trade, and (2) pyramiding ("nhồi lệnh") - add a second/third position
+when a trade is moving favorably, on the theory that a confirmed trend
+deserves more size. Both were cross-checked against
+`gold_bot/backtester.py` (exact match) before trusting results.
+
+**R:R ratio 5:3** - several ATR magnitudes at that ratio, single position:
+
+| SL / TP (ATR) | Full PF | Full net | Train PF | Test PF |
+|---|---|---|---|---|
+| 2.0 / 2.5 (previous, ratio 1.25) | 2.26 | +$303 | 1.64 | 3.58 |
+| 1.2 / 2.0 (ratio 1.67) | 1.62 | +$298 | 1.11 | 2.71 |
+| **1.8 / 3.0 (ratio 1.67, adopted)** | **2.28** | **+$348** | **1.78** | 3.28 |
+| 2.4 / 4.0 (ratio 1.67) | 2.07 | +$223 | 1.53 | 3.29 |
+| 3.0 / 5.0 (ratio 1.67) | 2.24 | +$199 | 1.68 | 3.51 |
+
+`1.8/3.0` improves PF and net dollars on both the full period and train
+independently (1.64→1.78), and while test PF eased slightly (3.58→3.28,
+still excellent), test net dollars actually improved ($198→$207) since
+the wider stop lets fewer trades get shaken out early. Adopted as the new
+`atr_sl_mult`/`atr_tp_mult` default. The other magnitudes at the same
+ratio are worse or inconsistent, confirming this isn't just "any 5:3
+works" - the absolute ATR distance matters as much as the ratio.
+
+**Pyramiding** - add a leg (each risking a smaller % of the fixed $500 so
+total risk stays capped) when price extends further in favor, moving
+earlier legs' stops to breakeven once a new leg opens:
+
+| Variant | Full PF | Full net | Train PF | Test PF |
+|---|---|---|---|---|
+| Baseline: 1 leg, 2% risk | 2.26 | +$303 | 1.64 | 3.58 |
+| 2 legs, 1% each, add at +1.0 ATR | 1.50 | +$129 | 1.16 | 2.03 |
+| 3 legs, 0.67% each, add at +1.0 ATR | 1.53 | +$107 | 1.15 | 2.14 |
+| 2 legs, 1% each, add at +1.5 ATR | 1.49 | +$103 | 1.32 | 1.70 |
+
+Every pyramiding variant **cuts profit factor and net profit roughly in
+half in every period** - full, train, and test all agree, no exceptions.
+The reason is the same one found in the multi-trigger experiment: adding
+a leg requires more trades to fire, and the additional trades are lower
+quality than the original entry (win rate on the pyramid legs drags the
+blended win rate from 57% down to 45-48%). The tight 1.0-ATR trailing
+stop that already lets winners run is doing the "let it ride" job
+pyramiding is meant to do - stacking more entries on top just adds noise.
+**Rejected**, not adopted.
+
 ### Multi-pair test - the edge does not transfer to FX pairs
 
 The identical framework (same entry, same filter stack, timeframes mapped
@@ -657,12 +705,12 @@ turned on:
 |---|---|
 | Trades | 115 |
 | Win rate | 57.39% |
-| Profit factor | **2.26** |
-| Total return (fixed_capital_percent_risk 2%, $500) | +60.62% / 5 years ($500 → $803) |
-| Max drawdown | -7.90% |
+| Profit factor | **2.28** |
+| Total return (fixed_capital_percent_risk 2%, $500) | +69.57% / 5 years ($500 → $848) |
+| Max drawdown | -9.23% |
 
-(These figures include the hour-7 exclusion adopted in the loss
-post-mortem above.)
+(These figures include the hour-7 exclusion from the loss post-mortem and
+the 5:3 R:R ratio from "R:R ratio and pyramiding" below.)
 
 ### $500 account backtest (legacy `equity_step` numbers - superseded above)
 
