@@ -305,6 +305,53 @@ could keep opening new trades even after the account was wiped out,
 never converging to a stop. It now refuses to open any new trade once
 equity reaches zero or below.
 
+### Scalping methods - all tested with real costs, 9 of 10 lose money
+
+A sweep of scalping-style methods (small ATR targets, max hold 1 hour, up
+to 10 trades/day) on the same real 5-year M5 data, $500 fixed capital, 1%
+risk per trade, real costs (25-point spread + 5-point slippage per side).
+The backtest engine for this sweep was cross-checked against
+`gold_bot/backtester.py` on an identical config (exact match: 131 trades,
+PF 1.29, $687.50 final) before any result below was trusted.
+
+| Method (TP/SL in ATR, hold ≤ 12 bars) | Trades | Win % | PF | Net/5yr | Max consec. losses | Worst month |
+|---|---|---|---|---|---|---|
+| Main-signal entries, TP 0.5/SL 1.0 | 137 | 66.4% | 0.88 | -$29 | 4 | -$21 |
+| Main-signal entries, TP 1.0/SL 1.0 | 136 | 54.4% | 1.10 | +$31 | 5 | -$21 |
+| EMA5/20 cross scalp, TP 0.5 | 2,426 | 56.3% | 0.58 | -$2,277 | 7 | -$104 |
+| EMA5/20 cross scalp, TP 1.0 | 2,389 | 43.3% | 0.71 | -$1,982 | 13 | -$117 |
+| Momentum burst (body>1.2 ATR), TP 0.5 | 3,769 | 55.0% | 0.55 | -$3,942 | 11 | -$163 |
+| 12-bar breakout scalp, TP 0.5 | 8,017 | 55.7% | 0.57 | -$7,878 | 12 | -$240 |
+| 12-bar breakout scalp, TP 1.0 | 6,929 | 42.9% | 0.70 | -$6,073 | 16 | -$224 |
+| EMA20 touch-and-go, TP 0.75 | 7,027 | 49.5% | 0.68 | -$5,877 | 11 | -$219 |
+| Stochastic 30/70 trend scalp, TP 0.5 | 2,200 | 57.1% | 0.61 | -$1,923 | 7 | -$115 |
+| Stochastic trend scalp, TP 1.0 | 2,166 | 44.1% | 0.74 | -$1,633 | 16 | -$95 |
+| **Main strategy (not scalping, baseline)** | **131** | **55.0%** | **2.01** | **+$286** | 7 | -$30 |
+
+(Net figures below -$500 mean the fixed-lot simulation kept trading past
+the point a real $500 account would already have been wiped out — a real
+account dies at the first -100%.)
+
+The one "profitable" row (+$31 over five years, PF 1.10) is not an
+independent scalping method — it is the main strategy's own entries with
+the winners cut short at 1 ATR, which destroys 89% of the profit the same
+entries produce with the full exit logic (+$286). Every genuinely
+scalping-frequency method (2,000-8,000 trades) lost badly despite several
+having win rates above 55%.
+
+The structural reason is arithmetic, not tuning: round-trip cost here is
+0.35 in price terms (spread 0.25 + slippage 2×0.05) against a mean M5
+ATR of ~1.5. A 0.5-ATR take-profit is ~0.76 of price movement, so costs
+consume ~46% of every winner, while losers pay the same toll. High win
+rates cannot overcome an average loss roughly twice the average net win —
+which is exactly the shape every row above shows (avg loss ≈ $5.15 vs.
+net win ≈ $2-3 after costs at TP 0.5). Scalping ads showing high win
+rates are exploiting precisely this blind spot: win rate is the number
+they show, cost-adjusted expectancy is the number that empties the
+account. On M1 the same arithmetic gets ~2x worse (ATR shrinks ~√5 while
+spread stays fixed), so no M1 test is needed to know it's worse - the
+cost share per trade rises above 100% of the median winner.
+
 ### Confluence filters - stacking independent signals for higher-quality entries
 
 Rather than swap the entry pattern (which the sweeps above show doesn't
