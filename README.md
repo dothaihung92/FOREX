@@ -447,6 +447,43 @@ stop that already lets winners run is doing the "let it ride" job
 pyramiding is meant to do - stacking more entries on top just adds noise.
 **Rejected**, not adopted.
 
+### Trailing-stop tuning and partial profit-taking - both confirm current settings are already near-optimal
+
+Two more exit-side ideas were tested against the 1.8/3.0 SL/TP default:
+
+**Trailing-stop ATR multiplier** (currently 1.0):
+
+| trail_mult | Full PF | Train PF | Test PF |
+|---|---|---|---|
+| 0.7 (tighter) | 1.71 | 1.23 | 2.55 |
+| 0.85 | 2.00 | 1.44 | 3.14 |
+| **1.0 (current)** | **2.28** | **1.78** | **3.28** |
+| 1.2 | 2.06 | 1.63 | 2.90 |
+| 1.5 (looser) | 1.65 | 1.39 | 2.15 |
+
+1.0 is the peak in all three periods independently - tighter cuts winners
+short before they run, looser gives back too much on the way down.
+Already optimal; not changed.
+
+**Partial profit-taking** (scale out 50% at N× initial risk, move the
+remaining 50%'s stop to breakeven, let it trail) - the mirror image of
+pyramiding: locks in profit and *reduces* risk instead of adding it:
+
+| Scale-out level | Full PF | Full net | Train PF | Test PF |
+|---|---|---|---|---|
+| None (current) | **2.28** | **+$348** | **1.78** | 3.28 |
+| 50% at 0.5R | 1.37 | +$91 | 1.11 | 1.90 |
+| 50% at 0.75R | 1.85 | +$219 | 1.40 | 2.76 |
+| 50% at 1.0R | 2.03 | +$276 | 1.47 | 3.17 |
+| 50% at 1.5R | 2.14 | +$308 | 1.57 | 3.26 |
+
+Scaling out gets closer to the baseline as the trigger level rises (1.5R
+is close but still below baseline on every metric), never beats it. The
+1.0-ATR trailing stop is already capturing full winners better than any
+scale-out variant that gives up half the position early. Confirms: don't
+fix what isn't broken - the current exit logic is a local optimum among
+everything tested here.
+
 ### Multi-pair test - the edge does not transfer to FX pairs
 
 The identical framework (same entry, same filter stack, timeframes mapped
@@ -652,6 +689,13 @@ capital number that never moves (`base_equity`), no matter how much the
 account has actually won or lost. Profit/loss is still tracked and
 reported — it just can't inflate the next trade's risk.
 
+**Note:** the table below predates the confluence filters, hour-7
+exclusion, and 5:3 R:R ratio adopted later in this README (it used the
+163-trade signal set, not the current 115-trade one) - kept for the
+sizing-mode comparison it makes (fixed-capital vs. equity_step vs.
+fixed_lot), which still holds. See "Increasing profit further" below for
+an up-to-date risk/trade table on the actual current default.
+
 Full 5-year real-data comparison, same signals/filters, `fixed_capital_percent_risk`:
 
 | Base capital | risk/trade | Trades | Win % | PF | Return/5yr | Max DD | Final equity |
@@ -793,6 +837,52 @@ because the position sizing is small in lot terms. (2) with such a small
 account, `max_daily_loss_pct` and `max_trades_per_day` matter more than
 usual — a string of losses is a bigger percentage swing on $500 than on
 $10,000, so don't disable those circuit breakers.
+
+## Increasing profit further - what was tried and what actually works
+
+Every profit lever a trader would reasonably try has now been tested on
+real data in this project. Summary, from most to least effective:
+
+**1. Risk per trade — the only lever that reliably scales profit, on the
+current default config (115 trades, 5:3 R:R, hours 7+9 excluded):**
+
+| risk/trade | Win % | PF | Return/5yr | Max DD | Final ($500) | Avg $/month |
+|---|---|---|---|---|---|---|
+| 1% | 57.4% | 2.14 | +32.1% | -5.4% | $661 | $2.68 |
+| **2% (current default)** | **57.4%** | **2.28** | **+69.6%** | **-9.2%** | **$848** | **$5.80** |
+| 3% | 57.4% | 2.28 | +103.5% | -14.5% | $1,017 | $8.62 |
+| 5% | 57.4% | 2.29 | +173.9% | -24.0% | $1,369 | $14.49 |
+| 8% | 57.9% | 2.25 | +271.7% | -37.9% | $1,858 | $22.64 |
+
+PF is essentially flat from 1-8% (2.14 to 2.29) because `fixed_capital_
+percent_risk` is scale-invariant - raising risk% doesn't change which
+trades win or lose, only their size. This means **the risk% dial is the
+one lever that's honestly "free" upside**, at the direct, disclosed cost
+of proportionally larger drawdown. Above 5% the DD (-24% and climbing)
+starts to matter psychologically even though the math hasn't broken -
+that's a personal risk-tolerance choice, not a strategy quality one.
+
+**2. Everything else tested, and why it didn't help:**
+
+| Approach | Result | Why |
+|---|---|---|
+| More entry triggers (MACD flip, Stochastic, breakout, etc.) | PF collapses to 0.86-1.08 | Alternative triggers have no real edge; diluting 115 good trades with hundreds of mediocre ones |
+| Trading other FX pairs | All fail (best AUDUSD fails test split) | The pullback-resume edge doesn't exist on mean-reverting FX majors |
+| Scalping (small targets, high frequency) | 9 of 10 variants lose | Spread+slippage cost eats ~46% of a small ATR target |
+| Pyramiding (add legs to winners) | PF roughly halves in every period | Added legs are lower quality than the original entry |
+| Wider TP without matching SL widening | Worse | Only the *ratio* held at 5:3 mattered; the current 1.8/3.0 magnitude is a genuine local optimum, not just "bigger TP" |
+| Partial profit-taking (scale out early) | Never beats no-scale-out | The existing 1.0-ATR trailing stop already captures full winners better |
+| Trailing-stop retuning | 1.0 ATR already optimal | Confirmed by direct sweep, both tighter and looser are worse |
+| Compounding (`equity_step`/`percent_risk` sizing) | Higher backtest PF, but... | ...this is the exact mechanism that wiped a real MT5 account - rejected on realized evidence, not backtest looks |
+
+**Bottom line**: the strategy's edge is what it is - about 23 trades/year
+at 57% win rate and 2.28 profit factor. That edge is now fully harvested;
+every attempt to extract more from it (more trades, bigger targets,
+tighter/looser exits, other markets, added positions) either does nothing
+or actively makes it worse. The only remaining honest dial is risk per
+trade, which is a straight trade of more $ upside for more $ drawdown at
+a fixed win rate - not a "free" improvement, but not a guess either since
+the whole curve above is measured, not estimated.
 
 ## Project layout
 
