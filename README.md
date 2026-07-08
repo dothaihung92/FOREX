@@ -447,6 +447,61 @@ stop that already lets winners run is doing the "let it ride" job
 pyramiding is meant to do - stacking more entries on top just adds noise.
 **Rejected**, not adopted.
 
+### TradingView indicator sweep - 12 popular indicators tested as confirmation filters
+
+Every indicator implemented from scratch (matching TradingView's standard
+formulas) that hadn't already been tried in this project - SuperTrend,
+Ichimoku Cloud (price vs. Kumo + Tenkan/Kijun cross), Parabolic SAR, CCI,
+Williams %R, Hull Moving Average slope, Vortex Indicator, Keltner
+Channel position, Donchian breakout, Awesome Oscillator, and DMI (+DI/-DI)
+- was layered as a confirmation filter on top of the full validated entry
+(same method that found H1+ATR-expansion worked earlier):
+
+| Indicator filter | Trades | Win % | PF | Return/5yr | Max DD |
+|---|---|---|---|---|---|
+| **None (baseline)** | **115** | **57.4%** | **2.28** | **+69.6%** | **-9.2%** |
+| SuperTrend agrees | 28 | 57.1% | 2.40 | +20.5% | -5.4% |
+| Ichimoku (price vs. cloud) | 59 | 54.2% | 1.92 | +28.7% | -7.4% |
+| Ichimoku Tenkan/Kijun cross | 8 | 50.0% | 1.29 | +1.6% | -5.2% |
+| Parabolic SAR agrees | 90 | 54.4% | 1.98 | +44.8% | -9.7% |
+| CCI > 0 / < 0 | 53 | 47.2% | 1.36 | +11.1% | -8.5% |
+| CCI not extreme (±150) | 108 | 57.4% | 2.17 | +60.6% | -9.8% |
+| Williams %R not extreme | 115 | 57.4% | 2.28 | +69.6% | -9.2% |
+| Hull MA slope agrees | 52 | 51.9% | 1.72 | +20.0% | -8.4% |
+| Vortex VI+/VI- agrees | 19 | 52.6% | 1.95 | +10.9% | -3.7% |
+| Keltner Channel mid position | 113 | 57.5% | 2.28 | +68.3% | -9.2% |
+| Awesome Oscillator agrees | 3 | 100% | ∞ | +8.6% | -1.2% |
+| DMI (+DI/-DI) agrees | 60 | 55.0% | 2.17 | +36.1% | -8.9% |
+
+None beat the baseline on a risk-adjusted basis after accounting for
+sample size. **SuperTrend** looked like the standout (PF 2.40 > 2.28) and
+was checked on train/test the way every other candidate in this project
+has been:
+
+| | Trades | PF | Return |
+|---|---|---|---|
+| Train, baseline | 67 | 1.78 | +28.2% |
+| Train, +SuperTrend | 19 | 2.42 | +13.9% |
+| Test, baseline | 48 | 3.28 | +41.3% |
+| Test, +SuperTrend | 9 | 2.37 | +6.6% |
+
+**Rejected.** The higher PF is real but comes entirely from throwing away
+trades - 9 trades in a 2-year test window is far too small to trust (the
+same failure mode as the earlier-rejected "ADX rising" filter), and net
+profit collapses in both periods despite the prettier PF. Williams %R and
+Keltner-mid barely filtered anything (115→115 and 113 trades) - not
+useful, just redundant with conditions the entry already implies. CCI,
+Ichimoku, Parabolic SAR, Hull MA, Vortex, and DMI all reduce both trade
+count and profit factor together - straightforward net negatives, no
+train/test check needed to reject them.
+
+**Conclusion, consistent with every other filter search in this
+project:** classic TradingView trend/momentum indicators mostly measure
+the same underlying trend the current EMA/RSI/MACD stack already
+captures, so requiring them to "agree" just prunes trades without adding
+real information - and the ones that prune enough to look good on PF do
+so by shrinking the sample past the point of being trustworthy.
+
 ### Trailing-stop tuning and partial profit-taking - both confirm current settings are already near-optimal
 
 Two more exit-side ideas were tested against the 1.8/3.0 SL/TP default:
