@@ -31,6 +31,14 @@ losing streak hit it. Kept in the repo for reference only; use
 `GoldBot_FixedCapitalRisk.mq5` instead. The three legacy files are
 identical except for `InpBaseLot`/`InpLotStep`/`InpMinLot`.
 
+`mql5/GoldBot_DCAGrid.mq5` implements the DCA/grid position-management
+design from "DCA/grid mode" below (hold through sideways/adverse moves,
+add a leg every $2 adverse move, exit only on trend reversal or a
+catastrophic hard stop). **Higher risk profile than the other two EAs** -
+a single grid can lose up to `InpDcaHardStopPct` (15% default) of
+capital before closing, vs. 2% for the other files' single-trade risk.
+Read "DCA/grid mode" below in full before using it.
+
 **Read this before using any of them:**
 - These files were written to match the validated Python logic but have
   **not been compiled or run in MetaTrader** (no Windows/MT5 in the
@@ -359,6 +367,96 @@ whipsaw) alongside the previously-validated hour 9 (EU/UK data releases)
 `gold_bot/backtester.py`.) Note it improves *net dollars* as well as
 quality metrics - the 16 excluded trades were net losers, not just
 low-quality winners.
+
+### DCA/grid mode - hold through sideways, average into losers, exit on trend reversal
+
+A specific request: instead of a fixed ATR stop-loss, hold through
+sideways moves, add another leg every $2 adverse move (DCA/martingale-
+style averaging into a losing position), and only close the whole
+position when the bot detects a trend reversal - no other exit.
+
+**This is a fundamentally different risk model from everything else in
+this project.** Every mode documented above caps the loss on a single
+trade via a hard ATR-based stop. This design removes that cap entirely -
+loss is bounded only by how long it takes the trend-reversal condition to
+fire, which has no guaranteed maximum. That's the same *category* of risk
+(unbounded downside) that wiped a real MT5 account earlier in this
+project via `equity_step` compounding - here the mechanism is different
+(no stop instead of growing lot size) but the failure mode is the same
+shape: a real account cannot survive an adverse move that outlasts a
+backtest's lucky historical recovery.
+
+Implemented as `sizing_mode: "dca_grid"` in
+`gold_bot/risk_manager.py`/`backtester.py` (`run_backtest_dca_grid()`,
+a separate engine from the standard `run_backtest()` since the exit
+logic is structurally different) and `mql5/GoldBot_DCAGrid.mq5`. Tested
+on the real 5-year XAUUSD M5 dataset, $1000 fixed base capital, 2% risk
+per $2-adverse-move leg:
+
+**Without any hard stop** (exit only on trend reversal, exactly as
+requested):
+
+| | Trades (legs) | Win % | PF | Return/5yr | Worst single-grid open loss |
+|---|---|---|---|---|---|
+| Full period | 146 | 34.3% | 1.69 | +243.8% | -$655.90 (**-65.6%** of $1000) |
+
+The strategy happened to be net profitable on this particular 5-year
+history - but at one point during it, an open grid's floating loss
+reached **65.6% of the entire account** before the trend-reversal
+condition finally fired and the position recovered. That recovery is one
+specific historical path, not a guaranteed property of the design - nothing
+stops a future adverse move from taking longer to reverse than this one
+did, and there is no floor if it doesn't. This backtest also does not
+model broker margin calls: several simultaneous legs (e.g. 5 × 0.1 lot on
+gold) represent tens of thousands of dollars of notional exposure against
+$1000 of capital, and most brokers would force-liquidate the position via
+a stop-out long before a -65% floating loss, at a worse price than this
+backtest assumes.
+
+**With a catastrophic hard stop added** (closes the whole grid if
+floating loss breaches `dca_hard_stop_pct` of base capital, whichever
+fires first - trend reversal or hard stop):
+
+| hard stop | Return/5yr | Worst single-grid open loss | Hard-stop triggers |
+|---|---|---|---|
+| 15% (recommended default) | **+242.0%** | **-$378.90 (-37.9%)** | 5 |
+| 20% | +234.6% | -$378.90 (-37.9%) | 3 |
+| 30% | +193.3% | -$655.90 (-65.6%) | 2 |
+| 50% (effectively none) | +193.3% | -$655.90 (-65.6%) | 1 |
+
+Counterintuitively, the 15% hard stop is not just safer, it's **more
+profitable** than no hard stop at all (+242.0% vs. +193.3%) - cutting a
+slow-recovering grid early frees the fixed capital to redeploy into the
+next signal instead of staying tied up waiting for a reversal that may
+take a long time. `dca_hard_stop_pct` therefore defaults to 15% and
+`RiskManager`/the MQL5 EA both refuse to run with it disabled or set to 0.
+
+**Validated on train/test, with an important caveat about drawdown
+measurement:**
+
+| | Trades | PF | Return | Continuous-curve DD | Worst single-grid open loss |
+|---|---|---|---|---|---|
+| Train (2020-08 to 2023-08) | 81 | 2.06 | +185.2% | -44.1% | -$207.95 (-20.8%) |
+| Test (2023-08 to 2025-08) | 65 | 1.33 | +58.6% | **-65.4%** | **-$378.90 (-37.9%)** |
+
+The test period's max drawdown, measured on its own (as if $1000 were
+deployed fresh right when the test period starts), is **worse** than the
+figure that shows up in the full continuous 5-year backtest (-44.1%) -
+because by the time the continuous backtest reaches the test period,
+accumulated profit from the train years provides a cushion that a
+freshly-funded account wouldn't have. **The -37.9% worst-single-grid
+number, not the smaller continuous-curve figure, is the honest estimate
+of what a real $1000 account starting today would risk.**
+
+**Recommendation:** if you use this mode, `dca_hard_stop_pct` must stay
+enabled (15% is both the safest and the most profitable setting tested).
+Understand that even with the hard stop, a single grid can still lose
+~38% of the account's fixed capital before closing, which happened twice
+in 5 years of real data - this is a materially higher risk profile than
+`fixed_capital_percent_risk` (the default mode), where a single trade's
+max loss is capped at `risk_per_trade_pct` (2%) by design. This mode is
+provided because it was explicitly requested and tested honestly, not
+because it's recommended over the default for a small account.
 
 ### Multi-trigger experiment - trying to raise trade count without losing quality
 

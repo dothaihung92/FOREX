@@ -59,6 +59,18 @@ class RiskConfig:
     equity_step_usd: float = 100.0
     min_lot: float = 0.01
 
+    # DCA/grid mode (opt-in, sizing_mode="dca_grid"): hold through sideways
+    # moves, add another leg every dca_step_price adverse move, exit all
+    # legs on trend reversal OR the dca_hard_stop_pct catastrophic stop -
+    # whichever comes first. See README "DCA/grid mode" for why the hard
+    # stop is not optional: without it, a single strong adverse move has
+    # no loss cap at all (tested: worst historical open loss on real data
+    # reached -65.6% of capital before the trend-reversal exit fired).
+    dca_step_price: float = 2.0
+    dca_leg_risk_pct: float = 2.0
+    dca_max_legs: int = 30
+    dca_hard_stop_pct: float = 15.0
+
 
 @dataclass
 class BacktestConfig:

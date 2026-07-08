@@ -160,3 +160,101 @@ def run_backtest(
         trades.append(open_trade)  # left open at end of data, pnl stays 0 (unrealized excluded from stats)
 
     return BacktestResult(trades=trades, equity_curve=equity_curve.ffill(), initial_balance=backtest_cfg.initial_balance)
+
+
+def run_backtest_dca_grid(
+    df: pd.DataFrame,
+    strategy_cfg: StrategyConfig,
+    risk_cfg: RiskConfig,
+    backtest_cfg: BacktestConfig,
+) -> BacktestResult:
+    """DCA/grid mode (risk_cfg.sizing_mode == "dca_grid"): hold through
+    sideways/adverse moves instead of a fixed ATR stop, add another
+    same-direction leg every dca_step_price adverse move, and only close
+    the whole grid when the trend flips against it (same trend definition
+    strategy.py's entry uses: M5 close vs. ema_slow + htf_trend + htf2_trend
+    all agreeing) OR the grid's total unrealized loss breaches
+    dca_hard_stop_pct of the fixed base_equity - whichever comes first.
+
+    The hard stop is not optional. Backtested on real data: without it,
+    the worst historical open loss reached -65.6% of a $1000 account
+    before the trend-reversal exit eventually fired and recovered - a
+    single worse historical path (or a future one) has no reason to stop
+    at that same point. Removing per-trade stop-loss is the same failure
+    category (unbounded loss) as the equity_step compounding blowup
+    documented in the README, just with an unbounded LOSS instead of an
+    unbounded POSITION SIZE - the hard stop caps it the same way
+    fixed-capital sizing caps the other one.
+
+    df must already contain signal/atr/ema_slow/htf_trend/htf2_trend
+    columns from strategy.generate_signals.
+    """
+    balance = backtest_cfg.initial_balance
+    equity_curve = pd.Series(index=df.index, dtype=float)
+
+    risk_mgr = RiskManager(cfg=risk_cfg, equity=balance)
+    spread = backtest_cfg.spread_points * POINT
+    slippage = backtest_cfg.slippage_points * POINT
+    leg_lots = risk_mgr.dca_leg_lots()
+    hard_stop_usd = risk_mgr.dca_hard_stop_usd()
+
+    legs: list[Trade] = []  # all open legs, same direction
+    direction = 0
+    last_add_price = 0.0
+    trades: list[Trade] = []
+
+    for ts, row in df.iterrows():
+        day = ts.date()
+        close = row["close"]
+
+        if legs:
+            trend_ok = (
+                (close > row["ema_slow"] and row["htf_trend"] > 0 and row["htf2_trend"] > 0)
+                if direction == 1
+                else (close < row["ema_slow"] and row["htf_trend"] < 0 and row["htf2_trend"] < 0)
+            )
+            unrealized = sum(direction * (close - leg.entry_price) * CONTRACT_SIZE * leg.lots for leg in legs)
+            hit_hard_stop = unrealized <= -hard_stop_usd
+
+            if not trend_ok or hit_hard_stop:
+                exit_price = close - direction * slippage
+                exit_reason = "hard_stop" if hit_hard_stop else "trend_reversal"
+                pnl_total = 0.0
+                for leg in legs:
+                    pnl = direction * (exit_price - leg.entry_price) * CONTRACT_SIZE * leg.lots
+                    leg.exit_time, leg.exit_price, leg.exit_reason, leg.pnl = ts, exit_price, exit_reason, pnl
+                    trades.append(leg)
+                    pnl_total += pnl
+                balance += pnl_total
+                risk_mgr.update_equity(balance)
+                risk_mgr.register_fill_pnl(day, pnl_total)
+                legs = []
+                direction = 0
+            elif len(legs) < risk_cfg.dca_max_legs:
+                adverse_move = direction * (last_add_price - close)
+                if adverse_move >= risk_cfg.dca_step_price and leg_lots > 0:
+                    entry_price = close + direction * (spread / 2 + slippage)
+                    legs.append(Trade(direction=direction, entry_time=ts, entry_price=entry_price,
+                                       stop_loss=0.0, take_profit=0.0, lots=leg_lots))
+                    last_add_price = close
+                    risk_mgr.register_trade_opened(day)
+
+        if not legs:
+            signal = row.get("signal", 0)
+            can_open, _ = risk_mgr.can_open_trade(day, open_positions=0)
+            atr_value = row["atr"]
+            if signal != 0 and can_open and leg_lots > 0 and not pd.isna(atr_value) and atr_value > 0:
+                direction = int(signal)
+                entry_price = close + direction * (spread / 2 + slippage)
+                legs = [Trade(direction=direction, entry_time=ts, entry_price=entry_price,
+                               stop_loss=0.0, take_profit=0.0, lots=leg_lots)]
+                last_add_price = close
+                risk_mgr.register_trade_opened(day)
+
+        unrealized = sum(direction * (close - leg.entry_price) * CONTRACT_SIZE * leg.lots for leg in legs) if legs else 0.0
+        equity_curve.loc[ts] = balance + unrealized
+
+    for leg in legs:
+        trades.append(leg)  # left open at end of data, pnl stays 0 (unrealized excluded from stats)
+
+    return BacktestResult(trades=trades, equity_curve=equity_curve.ffill(), initial_balance=backtest_cfg.initial_balance)

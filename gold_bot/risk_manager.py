@@ -112,6 +112,26 @@ class RiskManager:
         lots = self.cfg.base_lot + self.cfg.lot_step * int(steps)
         return round(max(self.cfg.min_lot, lots), 2)
 
+    def dca_leg_lots(self) -> float:
+        """Constant lot size for each leg of a dca_grid position, sized so
+        a single dca_step_price adverse move risks dca_leg_risk_pct of the
+        FIXED base_equity (never live equity - same fixed-capital principle
+        as fixed_capital_percent_risk). Not normalized against any ATR
+        stop distance because dca_grid has no per-leg stop; the hard stop
+        is applied to the whole grid's total unrealized loss instead (see
+        BacktestResult / DCAGridManager in backtester.py)."""
+        risk_amount = self.cfg.dca_leg_risk_pct / 100.0 * self.cfg.base_equity
+        loss_per_lot = self.cfg.dca_step_price * CONTRACT_SIZE
+        if loss_per_lot <= 0:
+            return 0.0
+        return max(0.0, round(risk_amount / loss_per_lot, 2))
+
+    def dca_hard_stop_usd(self) -> float:
+        """Catastrophic stop for the whole dca_grid position, in dollars,
+        against the fixed base_equity - not optional, see cfg.dca_hard_stop_pct
+        docstring."""
+        return abs(self.cfg.dca_hard_stop_pct) / 100.0 * self.cfg.base_equity
+
     def stop_loss(self, entry_price: float, atr_value: float, direction: int, atr_sl_mult: float) -> float:
         return entry_price - direction * atr_sl_mult * atr_value
 

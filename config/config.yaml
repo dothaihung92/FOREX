@@ -78,12 +78,22 @@ risk:
   #   fixed_lot    -> lot cố định tuyệt đối (base_lot), không quan tâm equity hay SL.
   #                   Đơn giản nhất nhưng rủi ro $ mỗi lệnh KHÔNG được chuẩn hóa theo SL -
   #                   khi ATR giãn rộng, lệnh đó rủi ro nhiều $ hơn bình thường.
+  #   dca_grid     -> (THỬ NGHIỆM, theo yêu cầu - không dùng qua run_backtest() thường,
+  #                   phải gọi run_backtest_dca_grid()) giữ lệnh khi sideway, nhồi thêm
+  #                   lệnh mỗi khi giá đi ngược dca_step_price, KHÔNG có SL/TP theo ATR -
+  #                   chỉ thoát toàn bộ khi trend đảo chiều HOẶC lỗ tạm tính chạm
+  #                   dca_hard_stop_pct (bắt buộc phải có, xem README "DCA/grid mode").
+  #                   Rủi ro cao hơn hẳn các mode trên - đọc kỹ README trước khi dùng.
   sizing_mode: fixed_capital_percent_risk
   base_equity: 500.0
   base_lot: 0.02
   lot_step: 0.02
   equity_step_usd: 100.0
   min_lot: 0.02
+  dca_step_price: 2.0
+  dca_leg_risk_pct: 2.0
+  dca_max_legs: 30
+  dca_hard_stop_pct: 15.0
 
 backtest:
   initial_balance: 500

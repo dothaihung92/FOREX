@@ -159,3 +159,33 @@ def test_fixed_lot_sizing_is_constant_regardless_of_equity_or_stop_distance():
     assert mgr.position_size_lots(2000.0, 1900.0) == 0.05
     mgr2 = RiskManager(cfg=FIXED_LOT_CFG, equity=10.0)
     assert mgr2.position_size_lots(2000.0, 1995.0) == 0.05
+
+
+DCA_GRID_CFG = replace(
+    RISK_CFG,
+    sizing_mode="dca_grid",
+    base_equity=1000.0,
+    dca_step_price=2.0,
+    dca_leg_risk_pct=2.0,
+    dca_max_legs=30,
+    dca_hard_stop_pct=15.0,
+)
+
+
+def test_dca_leg_lots_risks_leg_risk_pct_of_fixed_base_equity():
+    mgr = RiskManager(cfg=DCA_GRID_CFG, equity=1000.0)
+    lots = mgr.dca_leg_lots()
+    risk_amount = lots * DCA_GRID_CFG.dca_step_price * 100.0  # CONTRACT_SIZE=100
+    assert abs(risk_amount - 20.0) < 0.5  # 2% of $1000
+
+
+def test_dca_leg_lots_ignores_live_equity():
+    # Equity ballooned from prior profit, but leg size must stay anchored
+    # to the fixed base_equity - same principle as fixed_capital_percent_risk.
+    mgr = RiskManager(cfg=DCA_GRID_CFG, equity=5000.0)
+    assert mgr.dca_leg_lots() == RiskManager(cfg=DCA_GRID_CFG, equity=1000.0).dca_leg_lots()
+
+
+def test_dca_hard_stop_usd_is_pct_of_fixed_base_equity():
+    mgr = RiskManager(cfg=DCA_GRID_CFG, equity=1000.0)
+    assert abs(mgr.dca_hard_stop_usd() - 150.0) < 1e-9  # 15% of $1000

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 
-from gold_bot.backtester import run_backtest
+from gold_bot.backtester import run_backtest, run_backtest_dca_grid
 from gold_bot.config import load_config
 from gold_bot.strategy import generate_signals
 
@@ -39,7 +39,8 @@ def main() -> None:
     cfg = load_config(args.config)
     df = load_ohlc_csv(args.data)
     signals = generate_signals(df, cfg.strategy, cfg.sessions)
-    result = run_backtest(signals, cfg.strategy, cfg.risk, cfg.backtest)
+    engine = run_backtest_dca_grid if cfg.risk.sizing_mode == "dca_grid" else run_backtest
+    result = engine(signals, cfg.strategy, cfg.risk, cfg.backtest)
 
     summary = result.summary()
     print("Backtest summary")
