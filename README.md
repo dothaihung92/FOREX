@@ -447,6 +447,81 @@ stop that already lets winners run is doing the "let it ride" job
 pyramiding is meant to do - stacking more entries on top just adds noise.
 **Rejected**, not adopted.
 
+### Economic calendar (news) filter - tested with real data, rejected
+
+The `excluded_hours: [7, 9]` filter already blocks fixed UTC hours that
+tend to coincide with scheduled releases, but that's a blunt proxy - it
+blocks those hours every day, news or not. A more precise version was
+tested: use the actual Forex Factory economic calendar (real event
+timestamps, not just typical hours) to skip entries within a window of
+any **High-impact USD event** (NFP, CPI, FOMC statements, Fed Chair
+speeches, ISM PMIs, retail sales, unemployment - 1,100 such events in the
+covered range). Data: `data/calendar/ff_calendar_2020-2023.csv`, scraped
+from Forex Factory by the public `spoluan/forex-factory-scraper` project.
+Timezone was verified (fixed UTC+8 offset) by cross-checking known NFP
+release times (8:30am ET) against the file's stated local times across
+both EST and EDT periods, confirming the conversion held in both DST
+states.
+
+**Data limitation, disclosed upfront:** this source's scrape stops at
+2023-12-22, so it covers most of the project's usual train period
+(2020-08 to 2023-08) plus a few extra months, but **none** of the
+2023-2025 test period. Validated instead via an internal split of the
+calendar-covered range (early: 2020-08 to 2022-06, late: 2022-06 to
+2023-12) as the closest available substitute.
+
+While building this, a real bug was caught and fixed before trusting any
+result: the first implementation converted timestamps to integers via
+numpy's `.view('int64')`, which silently assumes nanosecond-precision
+`datetime64[ns]` - but the XAUUSD index is `datetime64[us]` (microseconds,
+pandas' newer default), so the comparison was off by a factor of 1000 and
+the filter matched **zero bars out of 350,903** at every window size
+tested, which produced identical "before/after" numbers that looked like
+"the filter never triggers" instead of a bug. Fixed by switching to
+`pd.merge_asof` for the nearest-event lookup, which handles dtype
+alignment correctly - re-verified with a sanity check (13,722 of 350,903
+bars fall within 60 minutes of a high-impact event, matching the ~13%
+back-of-envelope estimate from event frequency × window width).
+
+Results, full calendar-covered period (2020-08 to 2023-12):
+
+| Filter | Trades | Win % | PF | Return |
+|---|---|---|---|---|
+| None (baseline) | 76 | 51.3% | 1.76 | +30.5% |
+| Skip ±15min around High USD news | 61 | 49.2% | 1.50 | +16.2% |
+| Skip ±30min | 55 | 47.3% | 1.51 | +15.6% |
+| Skip ±60min | 48 | 45.8% | 1.30 | +8.4% |
+| Skip ±120min | 44 | 43.2% | 1.24 | +6.5% |
+| Skip ±240min | 40 | 42.5% | 1.18 | +4.5% |
+
+Every window size makes the strategy **worse**, monotonically - the wider
+the exclusion, the worse the result. The internal early/late split
+confirms this isn't reliable even where it looks locally positive:
+
+| | Trades | PF | Return |
+|---|---|---|---|
+| EARLY baseline | 40 | 1.86 | +17.2% |
+| EARLY skip ±30min | 32 | **1.14** | +2.8% |
+| LATE baseline | 36 | 1.67 | +13.2% |
+| LATE skip ±30min | 23 | **2.17** | +12.8% |
+
+The filter roughly halves performance in the early sub-period but
+improves it in the late one - opposite directions, the same
+inconsistency test that rejected other candidates earlier in this
+README. **Rejected.**
+
+**Why this is the opposite of the intuitive "avoid news" expectation:**
+the entry only fires *after* RSI pullback + MACD confirmation, meaning by
+construction it enters after a move has already started confirming
+direction - not at the news release itself. A big NFP or CPI surprise
+often *is* the catalyst for the clean trending move this strategy is
+built to catch; excluding the hours around it removes some of the
+strongest trend-continuation trades, not just noise. This differs from
+`excluded_hours: [7, 9]`, which targets specific *pre-London-open*
+whipsaw hours unrelated to any particular event - a different, narrower
+mechanism that survived validation earlier in this README precisely
+because it wasn't about news timing at all.
+
 ### TradingView indicator sweep - 12 popular indicators tested as confirmation filters
 
 Every indicator implemented from scratch (matching TradingView's standard
