@@ -399,6 +399,52 @@ Two conclusions worth keeping:
    fixed-capital risk table), not adding lower-quality entries - every
    variant of "more trades" tested in this project has ended at PF ≤ 1.1.
 
+### Multi-pair test - the edge does not transfer to FX pairs
+
+The identical framework (same entry, same filter stack, timeframes mapped
+one step up: signals on M15, HTF M15→H1, HTF2 H1→H4) was run on 10 years
+(2012-2022) of real M15 data for 11 FX pairs plus XAUUSD-M15 as the
+reference row, $500 fixed capital, 2%/trade, per-pair typical retail
+spreads. Data: public ejtraderLabs/historical-data dataset
+(`data/*_m15.csv`), MT5 server timestamps normalized to UTC, integer
+price scaling normalized per pair.
+
+| Pair | Trades | Win % | PF | Net/10yr | Train PF | Test PF | Verdict |
+|---|---|---|---|---|---|---|---|
+| AUDUSD | 100 | 41.0% | 1.10 | +$29 | 1.22 | 0.92 | fail (test loses) |
+| XAUUSD M15 (reference) | 145 | 35.9% | 1.03 | +$13 | 1.01 | 1.08 | breakeven |
+| GBPJPY | 115 | 33.0% | 0.82 | -$76 | 0.79 | 0.89 | fail |
+| AUDJPY | 78 | 35.9% | 0.79 | -$57 | 0.58 | 1.28 | fail |
+| USDCHF | 151 | 33.1% | 0.68 | -$193 | 0.86 | 0.47 | fail |
+| EURGBP | 172 | 32.6% | 0.64 | -$249 | 0.78 | 0.41 | fail |
+| USDCAD | 195 | 32.3% | 0.62 | -$291 | 0.60 | 0.66 | fail |
+| GBPUSD | 148 | 27.7% | 0.59 | -$247 | 0.58 | 0.62 | fail |
+| USDJPY | 119 | 31.9% | 0.55 | -$200 | 0.58 | 0.52 | fail |
+| EURUSD | 129 | 27.9% | 0.54 | -$234 | 0.65 | 0.44 | fail |
+| EURJPY | 97 | 32.0% | 0.53 | -$163 | 0.61 | 0.41 | fail |
+| EURCHF | 113 | 25.7% | 0.50 | -$247 | 0.32 | 0.92 | fail |
+
+To rule out "the gold-tuned filters are killing the FX pairs," the sweep
+was repeated with the core strategy only (no trend-strength threshold, no
+hour exclusions, no H1 confirmation, no ATR expansion): **every symbol got
+worse**, including XAUUSD-M15 itself (1.03 → 0.78). The filters help
+everywhere; the core edge simply doesn't exist outside gold.
+
+Conclusions:
+1. **No FX pair is suitable for this strategy.** The best (AUDUSD)
+   is marginal on the full period and loses in the test split. EURUSD -
+   the most-traded pair in the world - is one of the worst (PF 0.54, 27.9%
+   win rate), consistent with the well-known tendency of FX majors to
+   mean-revert intraday, which is fatal for a trend-pullback entry.
+2. **Even gold itself is only breakeven on M15 with M5-tuned
+   parameters** - the edge is specific to the symbol AND the timeframe
+   (and possibly the 2020-2025 regime; the M15 test covers 2012-2022).
+   "It works on gold M5" does not mean "it works on gold."
+3. Caveats: FX results use approximate constant quote→USD conversion
+   rates and assumed typical retail spreads; MT5 server-time normalization
+   ignores DST (±1h on session boundaries). None of these approximations
+   is remotely large enough to flip PF 0.5-0.8 into profitability.
+
 ### Scalping methods - all tested with real costs, 9 of 10 lose money
 
 A sweep of scalping-style methods (small ATR targets, max hold 1 hour, up
