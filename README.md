@@ -360,6 +360,45 @@ whipsaw) alongside the previously-validated hour 9 (EU/UK data releases)
 quality metrics - the 16 excluded trades were net losers, not just
 low-quality winners.
 
+### Multi-trigger experiment - trying to raise trade count without losing quality
+
+131→115 trades in 5 years (~2/month) prompted the obvious question: can
+more entries be added without destroying the edge? Instead of loosening
+the existing entry, five ADDITIONAL independent triggers were tested
+*inside the full validated filter stack* (M5+M15+H1 trend alignment,
+session, hour exclusions, trend-strength, ATR expansion) - the idea being
+each trigger catches a different kind of entry within the same
+high-quality context:
+
+| Trigger (inside the same filter stack) | Trades | Win % | PF | Net/5yr |
+|---|---|---|---|---|
+| T1 RSI pullback cross (current entry) | 115 | 57.4% | **2.26** | **+$303** |
+| T2 MACD histogram sign flip | 959 | 36.4% | 0.87 | -$396 |
+| T3 Stochastic K/D cross | 825 | 37.7% | 0.92 | -$215 |
+| T4 price reclaims EMA-fast | 887 | 39.2% | 1.02 | +$43 |
+| T5 relaxed T1 (lookback 12, threshold +10) | 469 | 41.8% | 1.08 | +$109 |
+| T6 inside-bar breakout | 1,051 | 35.7% | 0.86 | -$476 |
+
+Every union of triggers was also tested (T1+T2, T1+T4, T1+T2+T3, ... on
+full/train/test): **all of them collapse the result** - the best union
+(T1+T4) manages PF 1.03 and +$67, because T1's 115 good trades get
+drowned in ~800 mediocre ones. Even T5, which is just the current entry
+with slightly relaxed thresholds, drops PF from 2.26 to 1.08 while
+quadrupling trades.
+
+Two conclusions worth keeping:
+1. **The filter stack is not the edge.** The exact pullback-resume
+   sequence of the current entry (recent oversold → RSI crosses back with
+   MACD confirming) is the edge; the filters only refine it. Running
+   *other* textbook triggers through the same filters produces
+   noise-level results (PF 0.86-1.08), which is why "just add more
+   setups" fails.
+2. **~2 trades/month at PF 2.26 is what a real after-cost edge on gold M5
+   looks like.** The honest ways to get more out of it are raising risk
+   per trade within the documented drawdown tradeoffs (see the
+   fixed-capital risk table), not adding lower-quality entries - every
+   variant of "more trades" tested in this project has ended at PF ≤ 1.1.
+
 ### Scalping methods - all tested with real costs, 9 of 10 lose money
 
 A sweep of scalping-style methods (small ATR targets, max hold 1 hour, up
