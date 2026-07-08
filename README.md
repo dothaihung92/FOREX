@@ -305,6 +305,61 @@ could keep opening new trades even after the account was wiped out,
 never converging to a stop. It now refuses to open any new trade once
 equity reaches zero or below.
 
+### Loss post-mortem - reviewing every losing trade like a trading journal
+
+After the confluence filters were adopted, all 131 trades of the current
+default config were logged with their full entry context (hour, weekday,
+direction, session, RSI/ADX/trend-strength/ATR-regime at entry, distance
+from EMA) and winners were compared against losers - the way a
+professional reviews a trading journal to fix recurring mistakes.
+
+Patterns found in the losers, each then validated on the train/test
+split (the post-mortem sample is only 131 trades, so every "pattern" had
+to prove itself out-of-sample before being trusted):
+
+| Candidate fix from the loss review | Train | Test | Verdict |
+|---|---|---|---|
+| Skip hour 7 UTC (16 trades, 37.5% win, -$17) | PF 1.51→1.64, DD -10.0→-7.9 | PF 2.99→3.58, DD -3.3→-2.5 | **ADOPTED** |
+| Skip London entirely, NY-only | PF up, net up | PF up, **net down** ($190→$164) | rejected |
+| Skip Monday (28.6% win) | PF up, net up | **PF down** (2.99→2.77) | rejected |
+| Skip trend_strength > 0.12 ("late" entries) | **net down** | PF up | rejected |
+| Require high-ATR regime (rolling percentile) | PF up | **PF/net down** | rejected |
+
+Entry-timing refinements were tested the same way - could entries be
+"more precise" by waiting for a better price?
+
+| Entry timing variant | Full-period result | Verdict |
+|---|---|---|
+| Enter on signal close (current) | PF 2.01, +$286 | baseline |
+| Wait for next-bar confirmation | train much better, test worse (PF 2.99→2.28) | rejected - inconsistent |
+| Limit order -0.25 ATR retracement | PF 1.58, +$152 | rejected |
+| Limit order -0.40 ATR retracement | PF 1.39, +$95 | rejected |
+| Wait for EMA-fast retest (12 bars) | PF 1.07, +$17 | rejected |
+
+The retracement results are worth internalizing: every "get a better
+price" variant made things *worse*, because the strongest moves - the
+ones producing the big winners - never come back to fill a limit order.
+Waiting for a discount systematically filters you OUT of the best trades
+and INTO the marginal ones. Chasing entry-price perfection is a losing
+refinement for a trend-following entry.
+
+The one adopted fix - excluding hour 7 UTC (London open, first-hour
+whipsaw) alongside the previously-validated hour 9 (EU/UK data releases)
+- moves the full 5-year default result to:
+
+| Metric | Before (hour 9 only) | After (hours 7+9) |
+|---|---|---|
+| Trades | 131 | 115 |
+| Win rate | 54.96% | 57.39% |
+| Profit factor | 2.01 | **2.26** |
+| Total return | +57.21% | **+60.62%** |
+| Max drawdown | -9.97% | **-7.90%** |
+
+(Confirmed identical in both the numpy sweep engine and
+`gold_bot/backtester.py`.) Note it improves *net dollars* as well as
+quality metrics - the 16 excluded trades were net losers, not just
+low-quality winners.
+
 ### Scalping methods - all tested with real costs, 9 of 10 lose money
 
 A sweep of scalping-style methods (small ATR targets, max hold 1 hour, up
@@ -515,11 +570,14 @@ turned on:
 
 | Metric | Value |
 |---|---|
-| Trades | 131 |
-| Win rate | 54.96% |
-| Profit factor | **2.01** |
-| Total return (fixed_capital_percent_risk 2%, $500) | +57.21% / 5 years ($500 → $779) |
-| Max drawdown | -9.97% |
+| Trades | 115 |
+| Win rate | 57.39% |
+| Profit factor | **2.26** |
+| Total return (fixed_capital_percent_risk 2%, $500) | +60.62% / 5 years ($500 → $803) |
+| Max drawdown | -7.90% |
+
+(These figures include the hour-7 exclusion adopted in the loss
+post-mortem above.)
 
 ### $500 account backtest (legacy `equity_step` numbers - superseded above)
 
