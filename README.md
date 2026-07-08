@@ -1053,6 +1053,46 @@ cooperate. Increasing `risk_per_trade_pct` is a real lever if you
 deliberately want more volatility for more expected return, but pick a
 number using this table, not a target return in isolation.
 
+### Is 10%/month achievable? (asked directly - tested directly)
+
+The table above predates the current strategy (5:3 R:R, hour 7/9
+exclusion, H1+ATR confluence) and only shows the 5-year *average*
+annualized rate, which hides how lumpy monthly results actually are with
+only ~23 trades/year (~2/month). Re-run on $1000 with the current
+strategy, looking at the real month-by-month distribution (61 calendar
+months) instead of just the average:
+
+| risk/trade | Avg $/mo | Median $/mo | Worst month | Best month | Months hitting ≥10% | Max DD (5yr) |
+|---|---|---|---|---|---|---|
+| 2% (current default) | +1.14% | +0.73% | -7.1% | +8.3% | **0%** | -10.1% |
+| 5% | +2.80% | +1.82% | -18.0% | +21.2% | 6.6% | -24.1% |
+| 8% | +4.45% | +3.08% | -29.5% | +34.3% | 31.1% | -37.4% |
+| 10% | +5.61% | +3.78% | -36.2% | +42.7% | 34.4% | -45.8% |
+| 15% | +8.44% | +5.61% | -53.7% | +63.9% | 45.9% | -65.3% |
+| 20% | +11.25% | +7.57% | -71.9% | +86.3% | 49.2% | -82.9% |
+| 30% | +16.82% | +11.35% | -108.2%* | +128.3% | 52.5% | -113.9%* |
+
+(*Max drawdown/worst-month figures below -100% mean a real account would
+already be at zero or negative and stopped out by the broker well before
+reaching that number - the simulation keeps computing past the point a
+live account would have died.)
+
+**Answer: no, not sustainably, at any risk level.** At the current sane
+default (2%), average is +1.14%/month and the single best month in 5
+years only hit +8.3% - 10% was never reached even once. Pushing risk to
+20%/trade gets the *average* month above 10% (+11.25%), but look at the
+other columns: the *median* month is only +7.57% (most months still miss
+the target), 51% of months are below +10%, and the worst month is -71.9%
+with -82.9% max drawdown - i.e. the strategy would have been wiped out
+(or margin-called by the broker) at least once in that same 5-year
+window. The "average" is dragged up by a handful of huge lucky months
+while typical months and bad stretches would have already ended the
+account. There is no risk% where "consistent 10%/month" and "survives the
+next 5 years" are both true on this strategy's real trade frequency and
+win rate - the math (23 trades/year × 57% win rate × PF 2.28) simply
+doesn't generate that return without also generating account-ending
+variance.
+
 ## Live / paper trading (Windows + MT5 required)
 
 1. Install and log into the MT5 terminal for your broker.
