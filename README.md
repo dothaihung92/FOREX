@@ -1149,6 +1149,50 @@ confirmation, alongside the eight rejected top/bottom-catching variants
 and the built-in `enable_mean_reversion` mode that ships disabled for
 exactly this reason.
 
+## BB as a trend-following trigger - also tested, also rejected
+
+The reversal test above failed because it traded against the trend, so the
+obvious follow-up was to keep every validated filter of the default
+strategy (EMA 50/100 stack, M15 + H1 confluence, trend-strength gate,
+session and excluded-hour filters) and swap **only** the entry trigger
+from the RSI pullback to a Bollinger one. Train 2020-2022 / test
+2023-2025, shipped 5:3 R:R, real costs. `scripts/experiments/bb_trend_pullback_test.py`.
+
+| Variant | Train PF | Test PF | Trades (train) |
+|---|---|---|---|
+| **BASELINE (shipped RSI pullback)** | **1.16** | **1.36** | 56 |
+| V1 bounce off BB midline | 0.85 | 0.82 | 2,389 |
+| V2 midline + MACD | 0.83 | 0.80 | 2,287 |
+| V3 lower-band bounce in uptrend | 0.84 | 0.88 | 995 |
+| V4 midline + RSI pullback | 0.85 | 0.81 | 1,515 |
+
+All four lose in both regimes, and the trade-count column explains why.
+The baseline takes 56 trades in three years; the BB midline trigger takes
+2,389. Price bouncing off the midline during an uptrend is a routine
+event with no selectivity. **The edge was never in which oscillator fires
+the entry — it is in how rarely the entry fires at all.** Replacing a rare
+trigger with a common one destroys the thing that made it profitable.
+
+BB was then tried as an additional *filter* layered on the baseline rather
+than a replacement:
+
+| Variant | Train PF | Test PF |
+|---|---|---|
+| BASELINE | 1.16 | 1.36 |
+| V5 require price on the trend side of the BB midline | 1.38 (up) | 1.19 (down) |
+| V6 require room left to the outer band | 1.03 (down) | 1.50 (up) |
+
+Both look attractive in one regime — and they improve in *opposite*
+regimes, which is the signature of noise rather than edge. On a 56-trade
+sample, filtering out a dozen trades moves PF from 1.16 to 1.38 by chance
+alone. Picking V6 on the strength of its 1.50 test figure would be
+selecting a parameter on the test set, which is the definition of
+overfitting this project's train/test split exists to prevent.
+
+**All six variants rejected** under the standing rule that a change must
+improve both regimes to be adopted. Bollinger Bands are not added to the
+strategy in any form.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
