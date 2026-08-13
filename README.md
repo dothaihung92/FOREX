@@ -1193,6 +1193,65 @@ overfitting this project's train/test split exists to prevent.
 improve both regimes to be adopted. Bollinger Bands are not added to the
 strategy in any form.
 
+## Indicator COMBINATION sweep - every pair and triple tested, baseline still wins
+
+The single-indicator sweep above tested 12 indicators one at a time. This
+tests every **combination** of 1, 2 and 3 of them layered on the validated
+entry — 168 combinations reaching the 20-trade minimum — to answer
+directly: which combination makes the most profit?
+`scripts/experiments/indicator_combo_sweep.py`.
+
+Results are in R multiples (profit ÷ initial risk) so they do not depend
+on lot rounding, and each combination re-walks the timeline rather than
+just subsetting the baseline's trade list — filtering a trade out can free
+a later signal that was previously shadowed, and ignoring that would
+misreport.
+
+| Combination | Trades | Net R | PF | Train PF | Test PF |
+|---|---|---|---|---|---|
+| Stoch | 113 | +18.6 | 1.29 | 1.21 | 1.37 |
+| **BASELINE (no extra filter)** | **115** | **+16.6** | **1.25** | **1.13** | **1.37** |
+| Ichimoku + Stoch | 57 | +8.8 | 1.27 | 1.15 | 1.42 |
+| SuperTrend + Ichimoku + Stoch | 39 | +8.5 | 1.40 | 1.45 | 1.36 |
+
+**Nothing beats the baseline.** Stochastic tops the profit ranking, and it
+does not survive inspection:
+
+* It removes exactly **2 trades** across five years (115 → 113). Both
+  happen to be losers, totalling -2.03R. The entire "edge" is those two
+  trades.
+* On the test period it removes **zero** trades — its PF equals the
+  baseline's to four decimals (1.3747 vs 1.3747). It does nothing there.
+* Randomisation test: drop 2 trades at random from the baseline, 20,000
+  times. **14.1%** of random draws do at least as well as Stochastic.
+  p ≈ 0.14 — indistinguishable from luck.
+
+`Ichimoku + Stoch` is the only combination that beats the baseline's PF in
+both regimes, and it does so by discarding 58 trades whose combined result
+is **+7.76R** — it throws away winners. Net profit falls from +16.6R to
++8.85R. A higher profit factor bought by cutting profit in half is not an
+improvement; **PF is not money.**
+
+The clearest overfitting demonstration in this project so far: the
+best-on-train combination is `Ichimoku + HullMA + DMI` at **PF 2.44**,
+roughly double the baseline, on 10 trades. On the test period it scores
+**PF 0.91** — a loss. Ranking 168 combinations on one dataset and picking
+the winner is exactly how that result gets produced, which is why the
+train/test split is not optional here.
+
+Side finding: the `ATRexp` filter produces results **identical** to the
+baseline in every combination it appears in. The ATR-expansion condition
+is already implied by the existing entry filters — it is redundant code,
+not a filter.
+
+**Conclusion:** across 12 indicators individually, 168 combinations of
+them, Bollinger reversal and trend variants, and every other filter search
+in this project, no indicator combination has improved on the shipped
+EMA/RSI/MACD entry. The strategy's edge comes from selectivity (115 trades
+in five years), and every candidate either prunes that sample past the
+point of significance or adds nothing the existing filters do not already
+capture.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
