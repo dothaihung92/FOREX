@@ -1066,6 +1066,39 @@ account, `max_daily_loss_pct` and `max_trades_per_day` matter more than
 usual — a string of losses is a bigger percentage swing on $500 than on
 $10,000, so don't disable those circuit breakers.
 
+## Broker cost profile (Exness Standard)
+
+The default `backtest` costs in `config/config.yaml` are set for an Exness
+Standard account: no commission, all cost inside the spread.
+
+**The advertised "min spread 0.20 pips" does not apply to gold.** That
+figure is for major FX pairs, and "min" is a best-case quote under ideal
+liquidity, not an average. XAUUSD on a Standard account trades far wider
+and widens further around news and the daily rollover. Backtesting gold at
+0.20 pips inflates every result — it is the same class of mistake as
+removing the loss cap, which is what blew up a live account earlier in
+this project. The defaults stay deliberately pessimistic:
+
+| Setting | Value | Why |
+|---|---|---|
+| `spread_points` | 25 (= $0.25) | Conservative for XAUUSD on a Standard (commission-free) account |
+| `commission_per_lot` | 0.0 | Matches Exness Standard's no-commission model |
+| `slippage_points` | 5 (= $0.05/side) | M5 entries are market orders; assume they fill worse than the close |
+
+To pin these to your own account, read the live number in MT5 (Market
+Watch → right-click XAUUSD → Specification → Spread), sampling both a
+quiet session and a news release, then set `spread_points` to the wider of
+the two. Costs are the single most sensitive input in this project — the
+strategy's edge is roughly 4%/year before costs, so a spread assumption
+that is too optimistic can manufacture an edge that does not exist.
+
+One more note on this account type: **1:Unlimited leverage is not a
+feature to use.** It removes the broker's margin call as a backstop, which
+means nothing external stops a losing position before the balance is gone.
+Position sizing here is driven by `risk_percent` against a fixed capital
+base, never by available margin, and that should not change regardless of
+what leverage the account permits.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on

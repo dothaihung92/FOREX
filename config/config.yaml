@@ -97,8 +97,18 @@ risk:
 
 backtest:
   initial_balance: 500
-  spread_points: 25        # spread giả định (điểm), XAUUSD thường 2.0-3.0 pip = 20-30 points tùy broker
-  commission_per_lot: 0.0
+  # Hồ sơ chi phí giao dịch. Mặc định dưới đây khớp tài khoản Exness Standard
+  # (No commission, min deposit 10 USD, leverage 1:Unlimited).
+  #
+  # CẢNH BÁO: con số "min spread 0.20 pips" mà Exness quảng cáo là cho các cặp
+  # FX chính (EURUSD...), KHÔNG phải cho XAUUSD, và "min" là mức tốt nhất chứ
+  # không phải mức trung bình. Vàng trên tài khoản Standard thực tế rộng hơn
+  # nhiều bậc và giãn mạnh khi ra tin. Dùng 0.20 pips cho vàng sẽ làm mọi kết
+  # quả backtest đẹp lên một cách giả tạo - đúng cơ chế đã gây cháy tài khoản
+  # thật trong project này. Kiểm tra số thật: MT5 > Market Watch > chuột phải
+  # XAUUSD > Specification > Spread, xem cả lúc phiên yên và lúc ra tin.
+  spread_points: 25        # 0.25 USD - mức thận trọng cho XAUUSD tài khoản Standard
+  commission_per_lot: 0.0  # Exness Standard: không tính hoa hồng, chi phí nằm hết trong spread
   slippage_points: 5
 
 logging:
