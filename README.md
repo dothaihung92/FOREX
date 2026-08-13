@@ -1252,6 +1252,60 @@ in five years), and every candidate either prunes that sample past the
 point of significance or adds nothing the existing filters do not already
 capture.
 
+## Breakout / momentum entries ("trade with a strong break") - tested and rejected
+
+Tested on request, and the natural counterpart to the rejected reversal
+work: instead of fading an extreme, join it. Four ways of detecting a
+strong break — Donchian channel breaks (20/50/100 bars), large momentum
+candles (body > k x ATR), range expansion with a decisive close, and
+squeeze breaks after an ATR contraction — each at three filter levels
+(raw / + M15+H1 trend / + session and hour filters) and two exits (shipped
+1.8/3.0 and a wider 2.5/5.0, since breakout systems conventionally need
+more room). 60 variants reached the 20-trade minimum.
+`scripts/experiments/breakout_momentum_test.py`.
+
+| Criterion | Variants passing |
+|---|---|
+| Net profit over the full period | **1 of 60** |
+| PF > 1 on train | 5 of 60 |
+| PF > 1 on test | **0 of 60** |
+| PF > 1 on **both** | **0 of 60** |
+
+Not one variant is profitable on the test period. The single full-period
+winner is a 2x ATR momentum candle with the full filter stack at SL
+2.5/TP 5.0: 361 trades over five years, **+4.07R**, PF 1.02, train PF 1.08
+→ test PF 0.96. At 2% risk on $500 that is **+$40 in five years, about $8
+a year.** That is noise, not a strategy.
+
+The zero-cost diagnostic explains why, and the answer is different from
+the BB case:
+
+| Strategy | Trades | PF with costs removed | PF with real costs |
+|---|---|---|---|
+| **BASELINE (pullback)** | 115 | **1.475** | **1.252** |
+| M2.0 momentum + full filters | 361 | 1.059 | 1.017 |
+| R2.0 range expansion | 698 | 1.082 | 0.985 |
+| D20 Donchian + filters | 1,866 | 1.001 | 0.945 |
+| D20 Donchian raw | 6,679 | **1.003** | 0.920 |
+
+**Breakout has almost no edge even when trading is free.** Raw Donchian
+scores PF 1.003 with every cost removed — a coin flip. The baseline scores
+1.475. So costs are not what kills breakout here; the signal itself
+carries no information. On XAUUSD M5, a strong break does not predict the
+next move: price clearing a 20-bar high continues or reverses at close to
+even odds. This is the mirror image of the BB reversal finding — piercing
+the lower band is not a bottom, and breaking the high is not a
+continuation. Both directions of the same naive read of extremes fail.
+
+Per-trade expectancy: baseline **+0.1443R**, best breakout **+0.0113R** —
+about 13x worse.
+
+Two secondary observations worth keeping: the full filter stack (trend +
+session + hour) produced the best result for *every* trigger family, and
+the wider 2.5/5.0 exit beat 1.8/3.0 for *every* breakout trigger. Both
+adjustments point the right way; neither can rescue an entry signal that
+has no edge to begin with.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
