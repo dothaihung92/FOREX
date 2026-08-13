@@ -1099,6 +1099,56 @@ Position sizing here is driven by `risk_percent` against a fixed capital
 base, never by available margin, and that should not change regardless of
 what leverage the account permits.
 
+## BB + RSI 30/70 with TP swept 3-6 - tested and rejected
+
+A plain Bollinger-Band reversal setup, tested on request: **BUY** when
+price closes back inside the lower band with RSI < 30, **SELL** when it
+closes back inside the upper band with RSI > 70, flat SL/TP, no trend or
+session filter. "TP 3-6" is ambiguous in this project's vocabulary, so
+both readings were swept rather than guessed: as ATR multiples and as
+absolute dollar moves on gold.
+
+Real XAUUSD M5 data (350,903 bars, 2,809 raw signals), real Exness
+Standard costs ($0.25 spread + $0.05 slippage/side, no commission), $500
+start, 2% fixed-capital risk. Best cell of each sweep:
+
+| Reading | Best SL/TP | Trades | Win% | Net | PF | Max DD |
+|---|---|---|---|---|---|---|
+| ATR multiples | SL 2.0 / TP 5.0 | 2,451 | 27.9% | -$1,068 | 0.94 | ruin |
+| Absolute USD | SL $4 / TP $5 | 2,455 | 43.5% | -$662 | 0.94 | ruin |
+
+**All 24 combinations lose.** PF ranges 0.84-0.94 across the entire grid;
+not one cell clears 1.0. Widening TP raises the payoff but drops the hit
+rate by more, and widening SL raises the hit rate but costs more per loss
+— the two effects cancel, which is what a strategy with no edge looks
+like when you sweep its parameters.
+
+The diagnostic that matters is the zero-cost run:
+
+| Config | PF with costs removed | PF with real costs |
+|---|---|---|
+| SL $4 / TP $5 | 1.044 | **0.941** |
+| SL 2.0 / TP 5.0 ATR | 1.040 | **0.941** |
+
+The raw signal is worth PF ~1.04 — indistinguishable from noise before a
+single dollar of cost is paid. Trading costs did not break a good
+strategy here; they exposed an empty one. This is also a concrete
+demonstration of why the spread assumption above is not a detail: run
+this same sweep at the advertised 0.20-pip figure and the table prints
+profits.
+
+Ruin is explicit, not theoretical. On the least-bad configuration a $500
+account reaches $0 after 2,144 trades (2025-02-07). The -300%/-500%
+returns elsewhere in the sweep are the simulation continuing past
+bankruptcy; in reality the account is gone once, early.
+
+Why it fails is the same reason recorded twice already in this project:
+on XAUUSD M5, price piercing the lower band with RSI < 30 is usually a
+downtrend accelerating, not a bottom. This is the third independent
+confirmation, alongside the eight rejected top/bottom-catching variants
+and the built-in `enable_mean_reversion` mode that ships disabled for
+exactly this reason.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
