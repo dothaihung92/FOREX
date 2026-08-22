@@ -42,6 +42,12 @@ class StrategyConfig:
     htf2_ema_period: int = 100
     require_atr_expansion: bool = False  # ATR must be above its own rolling mean (volatility expanding, not contracting)
     atr_expansion_period: int = 20
+    # USD-strength confirmation from other FX pairs - EXPERIMENTAL, off by
+    # default and NOT validated. See gold_bot/correlation.py and README
+    # "Gold/FX correlation filter" before enabling.
+    require_usd_confirmation: bool = False
+    usd_pairs: list[str] = field(default_factory=lambda: ["EURUSD", "AUDUSD", "USDCHF"])
+    usd_lookback_hours: float = 12.0
 
 
 @dataclass

@@ -56,7 +56,18 @@ from datetime import time as dtime
 import pandas as pd
 
 from gold_bot.config import SessionWindow, StrategyConfig
+from gold_bot.correlation import usd_confirmation
 from gold_bot.indicators import adx, atr, bollinger_bands, ema, macd, rsi
+
+
+def _timeframe_minutes(index: pd.DatetimeIndex) -> float:
+    """Median bar spacing in minutes, so an hours-based lookback converts
+    to bars regardless of which timeframe the caller is running."""
+    if len(index) < 2:
+        return 5.0
+    delta = pd.Series(index).diff().median()
+    minutes = delta.total_seconds() / 60 if pd.notna(delta) else 5.0
+    return minutes if minutes > 0 else 5.0
 
 TIMEFRAME_TO_PANDAS_FREQ = {
     "M1": "1min",
@@ -101,13 +112,22 @@ def _htf_trend(df: pd.DataFrame, htf_timeframe: str, htf_ema_period: int) -> pd.
     return htf_trend.reindex(df.index, method="ffill")
 
 
-def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[SessionWindow]) -> pd.DataFrame:
+def generate_signals(
+    df: pd.DataFrame,
+    cfg: StrategyConfig,
+    sessions: list[SessionWindow],
+    fx_closes: dict[str, pd.Series] | None = None,
+) -> pd.DataFrame:
     """
     df must have columns: open, high, low, close, indexed by UTC datetime.
     Returns df with added indicator columns and a `signal` column:
         1  -> long entry
        -1  -> short entry
         0  -> no entry
+
+    fx_closes: optional {symbol: close series} used only when
+    cfg.require_usd_confirmation is set. Supplying it otherwise is
+    harmless and changes nothing.
     """
     out = df.copy()
     close = out["close"]
@@ -179,8 +199,26 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     else:
         atr_expanding = True
 
+    # USD-strength gate (experimental, off by default). Gold is priced in
+    # dollars, so a dollar trend is part of every gold move - but that
+    # relationship only exists at daily scale, not bar to bar, so this is a
+    # slow regime gate rather than a per-bar confirmation. Not validated;
+    # see gold_bot/correlation.py.
+    if cfg.require_usd_confirmation:
+        if not fx_closes:
+            raise ValueError(
+                "require_usd_confirmation is on but no fx_closes were supplied - "
+                "pass {symbol: close_series} for the pairs in cfg.usd_pairs"
+            )
+        bars_per_hour = 60 / _timeframe_minutes(out.index)
+        lookback = max(1, int(round(cfg.usd_lookback_hours * bars_per_hour)))
+        usd_long_ok, usd_short_ok = usd_confirmation(fx_closes, out.index, lookback)
+    else:
+        usd_long_ok = usd_short_ok = True
+
     trend_long = (
         uptrend
+        & usd_long_ok
         & recent_oversold.shift(1).fillna(False)
         & rsi_cross_up
         & macd_rising
@@ -193,6 +231,7 @@ def generate_signals(df: pd.DataFrame, cfg: StrategyConfig, sessions: list[Sessi
     )
     trend_short = (
         downtrend
+        & usd_short_ok
         & recent_overbought.shift(1).fillna(False)
         & rsi_cross_down
         & macd_falling

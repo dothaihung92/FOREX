@@ -17,6 +17,15 @@ strategy:
   atr_period: 14
   atr_sl_mult: 1.8         # tỷ lệ TP:SL = 5:3, kiểm chứng trên cả train/test - xem README "R:R ratio"
   atr_tp_mult: 3.0         # tighter trailing stop below usually exits before this TP anyway
+  # Xác nhận bằng sức mạnh đồng USD từ các cặp tiền khác (AUD/USD, EUR/USD,
+  # USD/CHF...). THỰC NGHIỆM, mặc định TẮT và CHƯA được kiểm chứng.
+  # Tương quan vàng/USD là CÓ THẬT nhưng chỉ tồn tại ở khung D1/W1
+  # (r = -0.54 đến -0.63), còn ở M15/H1 thì bằng 0. Dữ liệu FX trong repo
+  # chỉ tới 2022-03 nên chỉ chồng lấn 34 lệnh - quá ít để kết luận.
+  # Đọc README "Gold/FX correlation filter" trước khi bật.
+  require_usd_confirmation: false
+  usd_pairs: ["EURUSD", "AUDUSD", "USDCHF"]
+  usd_lookback_hours: 12.0
   htf_timeframe: "M15"     # khung lớn hơn để xác nhận xu hướng, giảm nhiễu khung M5
   htf_ema_period: 100
   min_trend_strength_pct: 0.0256  # bỏ lệnh khi EMA fast/slow còn quá sát nhau (trend chưa rõ) - kiểm chứng trên cả train/test, xem README

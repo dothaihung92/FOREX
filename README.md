@@ -1306,6 +1306,78 @@ the wider 2.5/5.0 exit beat 1.8/3.0 for *every* breakout trigger. Both
 adjustments point the right way; neither can rescue an entry signal that
 has no edge to begin with.
 
+## Gold/FX correlation filter - the thesis is right, the timeframe is wrong
+
+Requested design: before entering gold, check AUD/USD, EUR/USD and USD/CHF
+(dollar up → gold down) and only trade when they agree.
+
+**Step 1 - is the relationship real?** Measured on the repo's own 10-year
+FX data against gold returns, and the answer depends entirely on
+timeframe:
+
+| Timeframe | EURUSD | AUDUSD | USDCHF | USD basket |
+|---|---|---|---|---|
+| M15 | +0.004 | +0.007 | -0.015 | -0.008 |
+| H1 | -0.017 | -0.019 | -0.005 | +0.017 |
+| H4 | +0.150 | +0.155 | -0.215 | -0.204 |
+| **D1** | **+0.404** | **+0.439** | **-0.512** | **-0.542** |
+| **W1** | **+0.410** | **+0.540** | **-0.679** | **-0.628** |
+
+At daily and weekly scale the correlation is strong and **every sign
+matches the conventional thesis exactly** — AUD/USD and EUR/USD move with
+gold, USD/CHF against it, and a USD basket is the strongest signal of all
+at -0.54/-0.63. The reasoning behind the idea is sound.
+
+At M15 and H1 it is **zero**. Lagged correlations (FX leading gold by 1, 2
+and 4 bars) are also ~0.00, so the pairs do not lead gold either — they
+move *with* it, on a slow clock. A bar-to-bar "check the pairs before
+entering" rule has no information to work with. This is the same lesson as
+the indicator sweeps, arriving from a different direction: a relationship
+that is real does not automatically survive at the timeframe you want to
+trade.
+
+**Step 2 - test it as a slow regime gate instead**, which is the framing
+the data does support: allow gold longs only while the dollar has been
+drifting down over the past N hours, shorts only while it drifts up.
+`scripts/experiments/fx_correlation_filter_test.py`, 20 variants across
+four pairs/baskets × four lookbacks.
+
+The result cannot be trusted, and the reason is worth stating plainly:
+**the repo's FX data ends 2022-03-04 while gold M5 runs to 2025-08**,
+leaving a ~1.5-year overlap containing just **34 baseline trades** (a
+losing stretch for the baseline: -2.56R, PF 0.89). 18 of 20 filters
+"improved" on it — which is what happens when any filter prunes a losing
+sample. The best, a 12h USD basket, reached PF 1.46 (+4.68R from 19
+trades). It does not survive checking:
+
+* Randomisation test: 6.9% of random 19-trade subsets do at least as well
+  (p = 0.069) — and 20 variants were tried, so ~1.4 hits this good are
+  expected from chance alone.
+* Lookback instability: 4h → -1.31R, **12h → +4.68R**, 24h → -2.09R, 72h →
+  -1.04R. A real regime effect does not appear at 12 hours and vanish at 4
+  and 24.
+
+**Not adopted.** The filter is implemented (`gold_bot/correlation.py`,
+`require_usd_confirmation` in config) and **ships disabled**, in the same
+spirit as `enable_mean_reversion`: the code is ready, the evidence is not.
+The alignment is deliberately strict — FX bars stamped at the same time as
+a gold bar are treated as *not yet visible*, since they close at the same
+instant, and the filter fails closed when FX history is missing rather
+than silently allowing trades. `tests/test_correlation.py` covers both.
+
+To settle this properly you need FX M15 history covering **2022-2025**,
+which would raise the overlap from 34 to ~115 baseline trades and allow a
+train/test split. Drop those files into `data/` and re-run the script.
+Until then, treat the dollar relationship as context for reading the
+market, not as a mechanical entry filter.
+
+**On Bitcoin:** there is no BTC data in this repo, so the BTC/gold part of
+the thesis was not tested and no claim is made about it either way. It is
+worth noting that the BTC argument as usually stated is not falsifiable as
+a trading rule — "sometimes inverse, sometimes correlated, depending on
+sentiment" describes every pair of assets and produces no entry signal.
+Testing it would need a specific rule and BTC M5/M15 history.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
