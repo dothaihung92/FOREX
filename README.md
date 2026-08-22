@@ -1674,3 +1674,5 @@ All strategy/risk/session parameters live in `config/config.yaml` — no code
 changes needed to experiment with EMA periods, RSI levels, ATR multipliers,
 risk per trade, or session windows. Re-run the backtest after every change
 on real historical data before touching a live/demo account.
+
+<!-- update.py fast-forward test marker -->
