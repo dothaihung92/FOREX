@@ -1424,6 +1424,67 @@ trade, which is a straight trade of more $ upside for more $ drawdown at
 a fixed win rate - not a "free" improvement, but not a guess either since
 the whole curve above is measured, not estimated.
 
+## Market dashboard (charts + manual order entry)
+
+A local web dashboard: TradingView-style candles for gold and the FX pairs,
+the bot's own indicators overlaid, live account state, and manual BUY/SELL
+against an Exness (or any MT5) account.
+
+```bash
+# 1. Look around - offline CSV replay, simulated fills. Any OS, no risk.
+python scripts/run_dashboard.py
+
+# 2. Real Exness charts, balance and positions - READ ONLY, cannot trade.
+python scripts/run_dashboard.py --broker mt5
+
+# 3. Real account WITH order entry. Windows + a logged-in MT5 terminal.
+python scripts/run_dashboard.py --broker mt5 --live-trading
+```
+
+Opens at `http://127.0.0.1:8787/`.
+
+**What it shows:** candlestick chart with EMA 50/100 and Bollinger overlays
+(the same indicators the strategy trades on, so the picture matches the
+logic), a synced RSI pane with the 30/70 guides, a watchlist of all
+configured pairs with their session change, account balance/equity/free
+margin, and open positions with live P/L and a close button.
+
+**What it will refuse to do.** This page can move real money, so the limits
+are enforced server-side in `gold_bot/dashboard/orders.py`, not just in the
+browser:
+
+| Rule | Why |
+|---|---|
+| **A stop-loss is mandatory** | Every blow-up documented in this project traces to an uncapped loss. The dashboard will not send a naked market order even if asked. |
+| Max 5% of equity risked per order | Matches the project's sizing discipline; a manual click should not exceed what the bot would risk. |
+| Stop/target must be on the correct side of price | Catches the classic fat-finger inversion before the broker does. |
+| Lot size within broker min/max and on a valid step | Rejected locally with a clear reason rather than a numeric MT5 retcode. |
+| `max_concurrent_trades` from config | The manual panel obeys the same limit as the bot. |
+| Confirmation dialog stating dollars at risk | The number you actually care about, shown before anything is sent. |
+| Bound to `127.0.0.1` only | The API has no authentication because it assumes it is unreachable; `make_server` raises rather than binding a public address. |
+| Trading disabled unless `--live-trading` | Charts and account view need no such flag. Default is read-only. |
+
+Credentials come from `config/config.yaml` or the `MT5_LOGIN` /
+`MT5_PASSWORD` / `MT5_SERVER` environment variables — never from the
+command line, where they would land in shell history.
+
+**One thing the dashboard tells you that MT5 will not.** On a small account
+the broker's minimum lot can exceed the risk you asked for. Requesting 2%
+of a $500 account on gold at `min_lot: 0.02` actually risks about 4% —
+XAUUSD's 0.02 lot is 2 oz, and nothing smaller can be traded. The sizing
+button reports the *real* percentage and warns when the minimum overshoots
+the target, instead of silently handing over double the intended risk.
+
+The chart library (TradingView Lightweight Charts v4.1.3, Apache-2.0) is
+vendored into `gold_bot/dashboard/static/` rather than loaded from a CDN: a
+trading tool should not go blank because a third-party host is unreachable,
+and if the chart ever fails to load, the account and position panels still
+render so open risk can still be managed.
+
+No new Python dependencies — the server is standard-library `http.server`.
+Covered by `tests/test_dashboard_orders.py` and
+`tests/test_dashboard_server.py` (29 tests, including every refusal above).
+
 ## Project layout
 
 ```

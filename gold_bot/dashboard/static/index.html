@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold Bot - Market Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>%F0%9F%93%88</text></svg>">
+<link rel="stylesheet" href="/style.css">
+<!-- TradingView Lightweight Charts v4.1.3, Apache-2.0 (see the .LICENSE file
+     alongside it). Vendored rather than loaded from a CDN on purpose: a
+     trading tool must not go blank because a third-party host is
+     unreachable, and this dashboard works fully offline. -->
+<script src="/vendor/lightweight-charts.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="dot" id="conn-dot"></span>
+    <strong>Gold Bot</strong>
+    <span class="muted">Market Dashboard</span>
+  </div>
+  <div id="account-bar" class="account-bar">
+    <span class="muted">connecting…</span>
+  </div>
+  <div id="mode-badge" class="badge badge-sim">READ ONLY</div>
+</header>
+
+<main>
+  <section class="charts">
+    <div class="toolbar">
+      <label>Symbol
+        <select id="symbol"></select>
+      </label>
+      <label>Timeframe
+        <select id="timeframe"></select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="show-ema" checked> EMA 50/100
+      </label>
+      <label class="check">
+        <input type="checkbox" id="show-bb"> Bollinger
+      </label>
+      <span class="spacer"></span>
+      <span id="last-price" class="last-price">—</span>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+    <div id="chart" class="chart"></div>
+    <div id="rsi-chart" class="chart chart-sub"></div>
+
+    <div class="watchlist" id="watchlist"></div>
+  </section>
+
+  <aside class="side">
+    <div class="panel">
+      <h2>Place order</h2>
+      <div id="trade-disabled" class="notice hidden">
+        Trading is disabled for this session. Restart with
+        <code>--live-trading</code> to enable order entry.
+      </div>
+      <form id="order-form">
+        <div class="row">
+          <label>Stop loss
+            <input type="number" id="sl" step="0.00001" placeholder="required">
+          </label>
+          <label>Take profit
+            <input type="number" id="tp" step="0.00001" placeholder="optional">
+          </label>
+        </div>
+        <div class="row">
+          <label>Risk %
+            <input type="number" id="risk-pct" step="0.1" value="2">
+          </label>
+          <label>Lots
+            <input type="number" id="lots" step="0.01" min="0.01" value="0.01">
+          </label>
+        </div>
+        <div class="row">
+          <button type="button" id="atr-fill" class="ghost wide">
+            Fill SL/TP from ATR (bot's 5:3)
+          </button>
+        </div>
+        <div class="row">
+          <button type="button" id="calc-lots" class="ghost wide">
+            Size position for risk %
+          </button>
+        </div>
+        <div id="risk-readout" class="readout muted">
+          Set a stop loss to see risk.
+        </div>
+        <div class="row buttons">
+          <button type="button" id="buy" class="buy">BUY</button>
+          <button type="button" id="sell" class="sell">SELL</button>
+        </div>
+      </form>
+      <div id="order-msg" class="msg"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Open positions</h2>
+      <div id="positions" class="positions muted">none</div>
+    </div>
+  </aside>
+</main>
+
+<div id="confirm-backdrop" class="backdrop hidden">
+  <div class="modal">
+    <h3 id="confirm-title">Confirm order</h3>
+    <div id="confirm-body"></div>
+    <div class="modal-buttons">
+      <button id="confirm-cancel" class="ghost">Cancel</button>
+      <button id="confirm-ok" class="danger">Send order</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
