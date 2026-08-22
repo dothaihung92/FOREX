@@ -1424,6 +1424,47 @@ trade, which is a straight trade of more $ upside for more $ drawdown at
 a fixed win rate - not a "free" improvement, but not a guess either since
 the whole curve above is measured, not estimated.
 
+## Windows: start.bat and update.py
+
+**`start.bat`** — double-click it. On first run it builds a private Python
+environment in `.venv` and installs dependencies; after that it shows a
+menu:
+
+| Option | What it does |
+|---|---|
+| 1 | Charts on offline data, simulated fills — no broker, no risk |
+| 2 | Real Exness charts, balance and positions, **read-only** |
+| 3 | Real account **with order entry** — requires typing `LIVE` to confirm |
+| 4 | Run a backtest |
+| 5 | Update to the latest code (`update.py`) |
+| 6 | Run the test suite |
+
+It checks for Python 3.10+ before doing anything and says where to get it
+if missing, rather than failing later with a syntax error from inside the
+package. Option 3 prints a warning and does nothing unless you type `LIVE`
+exactly — Enter on an empty prompt cancels.
+
+**`update.py`** — run it directly or via option 5. It is deliberately
+conservative about your work:
+
+* **Stops if you have uncommitted changes** instead of overwriting them,
+  and prints the three ways to proceed (`--stash`, discard, or commit).
+* **Fast-forward only.** It never merges, resets or rewrites history. If
+  your branch has diverged from the server it stops, leaves the repository
+  untouched, and shows the reset command so *you* decide whether local
+  commits are expendable.
+* Retries the fetch on network errors with backoff (2s → 16s) rather than
+  failing on one bad connection.
+* Reinstalls dependencies only when `requirements.txt` actually changed.
+* Runs the tests afterwards, so a broken update surfaces here rather than
+  in front of a live chart — and tells you how to roll back if they fail.
+
+```bash
+python update.py               # normal update
+python update.py --stash       # set local edits aside first
+python update.py --skip-tests  # faster, skips the health check
+```
+
 ## Market dashboard (charts + manual order entry)
 
 A local web dashboard: TradingView-style candles for gold and the FX pairs,
