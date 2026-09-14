@@ -1378,6 +1378,73 @@ a trading rule — "sometimes inverse, sometimes correlated, depending on
 sentiment" describes every pair of assets and produces no entry signal.
 Testing it would need a specific rule and BTC M5/M15 history.
 
+## Two-sided martingale grid (BUY+SELL, $1 spacing, TP $1.50, no stop) - tested, catastrophic
+
+Built exactly as requested: a BUY and a SELL opened together, 10 pending
+levels per side $1 apart, +0.01 lot per level, basket take-profit $1.50,
+no stop-loss anywhere. `gold_bot/two_sided_grid.py`,
+`scripts/experiments/two_sided_grid_test.py`, MT5 port in
+`mql5/GoldBot_TwoSidedGrid.mq5`.
+
+**The arithmetic, before any backtest.** If one side's ladder fills
+completely that is 0.01+0.02+...+0.10 = **0.55 lots = 55 oz**, so every
+further $1 against you costs **$55** - while the target for that same
+basket is **$1.50**. Opening the full grid costs about **$38.50** in
+spread and slippage alone, roughly **26x the profit it is trying to
+make**.
+
+**The backtest**, 5 years of real XAUUSD M5 data, real Exness Standard
+costs:
+
+| Starting balance | Outcome |
+|---|---|
+| $500 | **wiped out after 6 days** |
+| $1,000 | **wiped out after 6 days** |
+| $5,000 | **wiped out after 1,199 days** |
+| $10,000 | **wiped out after 1,307 days** |
+| $50,000 | **wiped out after 1,643 days** |
+| $100,000 | survived, down 72.5% |
+
+On the $500 run it closed **754 baskets and won 753 of them - a 99.9% win
+rate - and still lost the entire account.** That is the martingale
+signature, not a flaw in the test: each win banks $1.50, and the one loss
+is unbounded because nothing closes a losing basket.
+
+**Nothing rescues it.** Every variation was tested:
+
+| Variation | Result |
+|---|---|
+| As requested ($1 step, TP $1.50) | wiped out, 6 days |
+| Wider step ($3 / $5) | wiped out, 31 / 811 days |
+| Bigger target ($50) | wiped out, 1,530 days |
+| Fewer levels (5) | wiped out, 3 days |
+| More levels (20) | wiped out, 6 days |
+| Flat 0.01 lot, no martingale | wiped out, 98 days |
+| **Zero trading costs** (impossible) | **wiped out, 98 days** |
+| Basket loss cap $25 / $50 / $100 / $200 | wiped out in all four |
+
+The zero-cost row is the decisive one: remove every dollar of spread and
+slippage and the account still dies, just more slowly. **The problem is
+structural, not a matter of tuning or broker costs.**
+
+**Why a big move in either direction loses.** Being hedged on both ends
+does not protect the basket - it guarantees that whichever way price runs,
+the far side's ladder keeps filling with losing trades. A violent move up
+fills all ten sell levels; a violent move down fills all ten buy levels.
+The "both ends" structure is what converts a one-directional risk into a
+two-directional one. This is pinned as a test
+(`test_a_big_move_either_way_loses_because_the_far_side_keeps_filling`).
+
+**A note on how this was measured.** The first version of the simulator
+closed winning baskets at the bar's extreme rather than at the price where
+$1.50 was actually crossed, and reported a fictional **+$204,000** profit
+on the same data that really wipes the account out in 6 days. The fix -
+solving for the exact price at which the basket is worth the target, since
+basket P/L is linear in price - is covered by
+`tests/test_two_sided_grid.py` so the error cannot return silently. Any
+grid backtest that shows a smooth rising equity curve deserves exactly
+this suspicion.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
