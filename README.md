@@ -1445,6 +1445,142 @@ basket P/L is linear in price - is covered by
 grid backtest that shows a smooth rising equity curve deserves exactly
 this suspicion.
 
+## Review of GoldBot_DynamicTP_FastClose.mq5 (uploaded EA)
+
+Reviewed and ported to Python (`gold_bot/dynamic_tp_grid.py`) so it could be
+backtested on the project's five years of real XAUUSD M5 data rather than
+judged by reading. Port fidelity is pinned by `tests/test_dynamic_tp_grid.py`.
+
+### Defects found by reading the code
+
+**1. The emergency close can deadlock the EA permanently.** `OnTick` sets
+`isClosingBasket = true`, fires `OrderSendAsync` for every position, and
+returns. The flag is cleared only when `CountPositions() == 0`. If any close
+is rejected the flag is never cleared, the close is never retried, and every
+subsequent tick returns early — the EA stops managing anything while the
+positions stay open with no stop-loss. There is no timeout, no retry, and no
+`OnTradeTransaction` handler to observe the async results.
+
+**2. The close request never sets `type_filling`, which makes rejection
+likely.** For `TRADE_ACTION_DEAL`, `MqlTradeRequest.type_filling` must carry a
+mode the symbol supports. Left zeroed it is `ORDER_FILLING_FOK`, which many
+brokers reject for market orders on metals (retcode 10030, "Unsupported
+filling mode"). `CTrade` sets this automatically — the raw `OrderSendAsync`
+path in `CheckAndExecuteAsyncBasketTP` does not. This is the trigger that
+makes defect 1 fire.
+
+**3. Lot sizes silently drop a step.** `MathFloor(rawLot / lotStep) * lotStep`
+is exact only when the division lands cleanly. In IEEE 754, `0.07/0.01` is
+6.9999999999999991 and `0.10/0.01` is 9.9999999999999982, so layers 7 and 10
+open 0.06 and 0.09 instead of 0.07 and 0.10. MQL5 uses the same doubles, so
+this happens in the terminal. A full 20-layer basket is 2.08 lots, not the
+intended 2.10.
+
+**4. A side with no positions opens instantly.** The guard is
+`lastBuyPrice == 0 || MathAbs(ask - lastBuyPrice) >= InpStepPrice`. When the
+focus flips to a side that is flat, `lastPrice` is 0 and the short-circuit
+skips the distance requirement entirely.
+
+**5. `MathAbs` makes the focus rule add in both directions.** The comment
+says "nhồi vế dương" (add to the winning side), but absolute distance means a
+$1 move *against* that side also triggers another add. It averages down into
+the side it believes is winning.
+
+**6. Trade results are never checked.** The `trade.Buy`/`trade.Sell` calls in
+the grid logic ignore their return value, so a rejected order (insufficient
+margin, bad volume, market closed) is retried every tick indefinitely.
+
+**7. The trend read repaints.** `GetTrendDirection` copies buffer index 0, the
+still-forming bar, so the entry direction can flip within a bar.
+
+**8. Per-tick history scans.** `HistorySelectByPosition` runs once per
+position inside both `ManageGridAndDisplay` and
+`CheckAndExecuteAsyncBasketTP` — up to 40 history selects per tick.
+
+**9. Market orders are sent with an explicit price.**
+`trade.Buy(lot, _Symbol, ask, ...)` invites requotes on market-execution
+accounts; passing 0.0 lets the terminal fill at market.
+
+**10. No stop-loss anywhere**, and no margin check before opening.
+
+### The structural flaw: the dynamic TP is a trap
+
+`requiredTP = max($2, totalLots x $10)` scales with **gross** lots, while a
+basket's profit is driven by **net** exposure. Because the EA opens both
+directions, gross grows much faster than net:
+
+| Positions | Total lots | Required TP | Net exposure | Move needed |
+|---|---|---|---|---|
+| 1 | 0.01 | $2.00 | $1/$ | $2.00 |
+| 6 | 0.21 | $2.10 | $3/$ | $0.70 |
+| 10 | 0.53 | $5.30 | $5/$ | $1.06 |
+| 15 | 1.18 | $11.80 | $8/$ | $1.48 |
+| 20 | 2.08 | $20.80 | $10/$ | $2.08 |
+
+**The deeper the trouble, the further away the exit moves.** In the limit, a
+perfectly hedged basket — say 0.5 lot long against 0.5 lot short — has zero
+net exposure and a $10 target, so *no price in the world closes it*. It is
+frozen permanently, paying swap on both sides. (Swap is not even modelled in
+the backtest below, so real results would be worse.)
+
+### Backtest, five years of real XAUUSD M5, real Exness Standard costs
+
+| Starting balance | Outcome |
+|---|---|
+| $500 | **wiped out the same day** (13.5 hours in) |
+| $1,000 | **wiped out the same day** |
+| $5,000 | **wiped out after 1,321 days** |
+| $10,000 | **wiped out after 1,327 days** |
+| $50,000 | **wiped out after 1,624 days** |
+| $100,000 | **wiped out after 1,704 days** |
+
+**Every capital level is wiped out.** On the $500 run the EA closed 14
+baskets and won 13 of them before the account was gone - the martingale
+signature seen throughout this project. The largest basket reached 20
+positions and 2.08 lots: 208 oz, roughly $405,000 of notional against $500
+of capital.
+
+Parameter sweep at $10,000, to find what is actually load-bearing:
+
+| Variant | Result |
+|---|---|
+| As uploaded | wiped out, 1,327 days |
+| Step $3 | +1.8% |
+| Step $5 | wiped out, 1,699 days |
+| Max 10 layers | -53.8% |
+| Max 40 layers | +202.5% |
+| Focus at 3 positions | wiped out, 1,326 days |
+| Focus at 12 positions | wiped out, 94 days |
+| **Flat 0.01 lot (no ramp)** | **+10.2%**, worst float only -$2,425 |
+| TP $5/lot (easier target) | wiped out, 33 days |
+| TP $20/lot (harder target) | +105.4% |
+| Zero trading costs (impossible) | +96.2% |
+
+Two things stand out. **Removing the lot ramp is the single change that
+most reduces the damage** - the worst floating loss falls from -$30,375 to
+-$2,425, an order of magnitude, because the ramp is what turns a bad
+basket into a fatal one. And **making the target harder ($20/lot) beats
+making it easier ($5/lot, dead in 33 days)**, which is the opposite of the
+intuition behind "fast close".
+
+The results that look positive are not a green light. "Max 40 layers" at
++202.5% carried a -$23,271 floating loss on a $10,000 account: it survived
+because this particular five-year path happened to retrace in time, not
+because the risk was bounded. One slower retrace and the row reads WIPED
+OUT like the others.
+
+A basket loss cap does not rescue it either - $50, $100, $250, $500 and
+$1,000 caps all still lose the account, because capping each basket simply
+books the losses one at a time while the wins stay capped at a few dollars.
+
+### Verdict
+
+Do not run this on a live account. The defects above are fixable, but the
+dynamic-TP-plus-two-sided-grid structure is not a tuning problem: it is
+the same family as the martingale designs already rejected in this project,
+with an added failure mode (a target that recedes as the basket grows)
+that the others did not have.
+
 ## Increasing profit further - what was tried and what actually works
 
 Every profit lever a trader would reasonably try has now been tested on
