@@ -1696,6 +1696,79 @@ which is a symptom of the structure being wrong, not of the rule being
 right. Fixing the direction logic cannot help while the target still
 recedes as the basket grows.
 
+### The grid EA at $100,000 - and the root cause of why it cannot scale
+
+Running the repaired grid EA on a $100,000 account, five years of real
+XAUUSD M5:
+
+| Configuration | Result | Per year | Worst floating |
+|---|---|---|---|
+| lot 0.01 (the tested default) | +$144 (+0.14%) | +0.03% | -$113 |
+| lot 0.10 (x10) | -$6,790 | -1.36% | -$1,178 |
+| lot 0.50 (x50) | -$27,887 | -5.58% | -$5,892 |
+| lot 1.00 (x100) | -$55,774 | -11.15% | -$11,785 |
+| lot 2.00 (x200) | **WIPED OUT in 39 days** | - | -$23,570 |
+
+The percentage result does **not** survive scaling: 0.01 lot on $500
+returned +29%, but the same lots-to-capital ratio on $100,000 blows the
+account up in 39 days.
+
+**Root cause, and it is a single number.** A round trip on one lot of gold
+costs (spread $0.25 + slippage 2 x $0.05) x 100 oz = **$35 per lot**. The
+EA's target is `InpProfitPerLotUSD = $10 per lot`. **The target is below
+the cost floor**, so every basket larger than about 0.06 lots loses money
+*even when it wins*:
+
+| Basket | Target needed | Round-trip cost | |
+|---|---|---|---|
+| 0.01 lot | $2.00 (absolute floor) | $0.35 | profitable |
+| 0.06 lot | $2.00 | $2.10 | already underwater |
+| 0.20 lot | $2.00 | $7.00 | loses when it wins |
+| 2.00 lot | $20.00 | $70.00 | loses when it wins |
+| 40.0 lot | $400.00 | $1,400.00 | loses when it wins |
+
+The `$2` absolute floor is what made the 0.01-lot configuration look
+viable. It masks the per-lot arithmetic at tiny sizes and stops masking it
+the moment the account grows.
+
+Raising the target above the cost floor helps but does not rescue it:
+
+| Base lot | Target/lot | Result | Per year | Worst floating |
+|---|---|---|---|---|
+| 0.50 | $10 | -$27,887 | -5.58% | -$5,892 |
+| 0.50 | $150 | +$2,061 | **+0.41%** | -$5,865 |
+| 1.00 | $10 | -$55,774 | -11.15% | -$11,785 |
+| 1.00 | $150 | +$4,122 | **+0.82%** | -$11,731 |
+
+Best case at $100,000: **+0.82% a year while carrying an $11,731 floating
+loss.**
+
+### What $100,000 should run instead
+
+The project's default strategy - EMA 50/100 + RSI pullback + MACD, M15/H1
+confirmation, a hard ATR stop on every trade, 5:3 R:R - on the same data
+and the same account:
+
+| Risk per trade | Net over 5 years | Per year | PF | Max drawdown |
+|---|---|---|---|---|
+| 1% | +$16,622 | +3.32% | 1.25 | -11.3% |
+| **2%** | **+$33,234** | **+6.65%** | **1.25** | **-22.1%** |
+| 3% | +$49,820 | +9.96% | 1.25 | -32.4% |
+| 5% | +$83,059 | +16.61% | 1.25 | -51.8% |
+
+And unlike the grid, it holds up out of sample: train 2020-2022 PF 1.13,
+test 2023-2025 PF 1.37.
+
+**Eight times the return of the best grid configuration, with a stop-loss
+on every single trade.** At $100,000, 1-2% risk is the sensible band.
+
+Two caveats that matter at this account size. The edge is modest and thin
+- 115 trades in five years at PF 1.25 - so a losing year is entirely
+normal. And this backtest models $0.05 of slippage per side, which is
+realistic for small orders; 1-2 lot gold orders fill worse than that, so
+treat the figures as an upper bound and verify fills on a demo account
+first.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
