@@ -51,6 +51,17 @@ class EaParams:
     # Not part of the EA. Off by default so the default run measures the
     # EA as written; used only to answer "would a stop have saved it?".
     max_basket_loss_usd: float | None = None
+    # Which side to add to once the basket reaches trigger_pos_count.
+    #   "profit"   - the original: whichever side shows more floating profit.
+    #                With a dozen positions open, a few cents of movement
+    #                flips this, so it tracks noise rather than direction.
+    #   "ema"      - the same EMA trend the entry used.
+    #   "net"      - the side already holding more lots (extend the net).
+    #   "momentum" - direction of the last `momentum_bars` closes.
+    #   "onesided" - never hedge: always the basket's opening direction.
+    #   "loser"    - add to the side that is down (classic averaging in).
+    focus_rule: str = "profit"
+    momentum_bars: int = 12
 
 
 @dataclass
@@ -83,6 +94,7 @@ class EaState:
         self.worst_floating = 0.0
         self.max_positions = 0
         self.opened_bar = 0
+        self.opening_is_buy = True
 
     # ---- helpers mirroring the EA's accounting -----------------------
     def profit(self, bid: float, ask: float) -> float:
@@ -165,6 +177,36 @@ class EaState:
         return total
 
 
+def _favour_buy(st: "EaState", p: EaParams, bid: float, ask: float,
+                ema_fast: float, ema_slow: float, momentum: float) -> bool:
+    """Which side the grid should extend, per the configured rule."""
+    rule = p.focus_rule
+    if rule == "ema":
+        return ema_fast >= ema_slow
+    if rule == "momentum":
+        return momentum >= 0.0
+    if rule == "onesided":
+        return st.opening_is_buy
+    if rule == "net":
+        buy_lots = sum(q.lots for q in st.positions if q.is_buy)
+        sell_lots = sum(q.lots for q in st.positions if not q.is_buy)
+        return buy_lots >= sell_lots
+    buy_p, sell_p = st.side_profit(bid, ask)
+    if rule == "loser":
+        return buy_p < sell_p
+    if rule == "exposure":
+        # Add wherever it grows NET exposure, since a basket with no net
+        # exposure cannot reach a target that scales with gross lots.
+        buy_lots = sum(q.lots for q in st.positions if q.is_buy)
+        sell_lots = sum(q.lots for q in st.positions if not q.is_buy)
+        if buy_lots > sell_lots:
+            return True
+        if sell_lots > buy_lots:
+            return False
+        return buy_p >= sell_p
+    return buy_p >= sell_p
+
+
 def run_ea(df: pd.DataFrame, p: EaParams, start_balance: float = 500.0) -> dict:
     """Bar-path simulation of the EA over OHLC data.
 
@@ -181,6 +223,7 @@ def run_ea(df: pd.DataFrame, p: EaParams, start_balance: float = 500.0) -> dict:
 
     ema_f = df["close"].ewm(span=p.ema_fast, adjust=False).mean().to_numpy()
     ema_s = df["close"].ewm(span=p.ema_slow, adjust=False).mean().to_numpy()
+    mom = (df["close"] - df["close"].shift(p.momentum_bars)).fillna(0.0).to_numpy()
 
     n = len(close)
     half = p.spread / 2.0
@@ -255,9 +298,11 @@ def run_ea(df: pd.DataFrame, p: EaParams, start_balance: float = 500.0) -> dict:
                     # Fresh cycle in the EMA trend direction.
                     if ema_f[i] > ema_s[i]:
                         st.opened_bar = i
+                        st.opening_is_buy = True
                         st._add(True, p.initial_lot, mid)
                     elif ema_f[i] < ema_s[i]:
                         st.opened_bar = i
+                        st.opening_is_buy = False
                         st._add(False, p.initial_lot, mid)
                     break
 
@@ -266,8 +311,15 @@ def run_ea(df: pd.DataFrame, p: EaParams, start_balance: float = 500.0) -> dict:
 
                 lot = st.next_lot()
                 if st.count() >= p.trigger_pos_count:
-                    buy_p, sell_p = st.side_profit(bid, ask)
-                    if buy_p >= sell_p:
+                    favour_buy = _favour_buy(st, p, bid, ask, ema_f[i], ema_s[i],
+                                             mom[i])
+                    # "profit_ema": take the profit-side pick, but only act
+                    # on it when the slow trend agrees. Skips the add
+                    # otherwise instead of choosing the other side.
+                    if p.focus_rule == "profit_ema":
+                        if favour_buy != (ema_f[i] >= ema_s[i]):
+                            break
+                    if favour_buy:
                         last = st.last_price(True)
                         # NOTE: MathAbs in the original - distance in EITHER
                         # direction triggers another add on the winning side.

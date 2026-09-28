@@ -1639,6 +1639,63 @@ roughly constant in **dollars** across account sizes (-$113 to -$274), so
 a small account carries far more percentage risk from the identical
 basket.
 
+### Is there a better rule for which side to add to?
+
+Asked directly: adding to "whichever side shows more profit" looks wrong,
+because with a dozen positions open the tiniest price move puts one side
+ahead. **That critique is correct.** Measured on a 12-position hedged
+basket, the decision flips after **$0.01** of price movement — the rule
+carries no directional information whatever.
+
+Six alternatives were implemented and backtested (flat 0.01 lot, 20
+layers, $100 cap, five years of real XAUUSD M5):
+
+| Rule for which side to add | $500 | $1,000 | $5,000 |
+|---|---|---|---|
+| **profit (the original, noise-driven)** | **+29%** | **+14%** | **+3%** |
+| ema — follow the EMA trend | WIPED 4d | -39% | -8% |
+| momentum — follow the last hour | WIPED 11d | WIPED 14d | -19% |
+| net — extend the bigger side | WIPED 5d | WIPED 25d | WIPED 172d |
+| onesided — never hedge | WIPED 5d | WIPED 34d | WIPED 194d |
+| loser — average into the loser | WIPED 3d | -73% | -15% |
+| profit + EMA must agree | WIPED 14d | WIPED 74d | -30% |
+| exposure — maximise net exposure | WIPED 4d | WIPED 14d | WIPED 157d |
+
+**Every "smarter" rule is worse.** The noisy one is the only survivor, and
+the reason is not that it predicts direction — it does not.
+
+The mechanism is the dynamic TP. The target scales with **gross** lots
+while basket profit depends on **net** exposure, so a basket with no net
+exposure can never close (documented above). Measuring the hedge ratio
+(|net lots| / total lots) explains the table:
+
+| Rule | Hedge ratio | Outcome |
+|---|---|---|
+| profit | 0.259 — most directional | survives |
+| momentum | 0.259 | dies |
+| ema | 0.243 | dies |
+| onesided | 0.148 | dies |
+| net | 0.040 | dies |
+| loser | 0.004 — almost perfectly hedged | dies fastest |
+
+The rules that hedge the basket toward flat (`loser` at 0.004, `net` at
+0.040) build baskets that **cannot reach their target at any price**. They
+sit open until the loss cap fires, over and over — 190 baskets for
+`loser`, versus 80 for `profit`. Death by a thousand cuts.
+
+So "add to the winning side" is not a trend signal and was never one. It
+is a **target-seeking rule**: the winning side is by construction the side
+price has moved toward, so extending it pulls the basket toward the exit
+that closes it. Replacing it with a real trend signal breaks that, because
+a trend signal will happily keep adding to the side price is moving *away*
+from.
+
+The honest conclusion is not "the original rule is good". It is that
+**the dynamic-TP structure only tolerates a rule that chases the exit**,
+which is a symptom of the structure being wrong, not of the rule being
+right. Fixing the direction logic cannot help while the target still
+recedes as the basket grows.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
