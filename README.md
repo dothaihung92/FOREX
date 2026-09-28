@@ -1573,6 +1573,30 @@ A basket loss cap does not rescue it either - $50, $100, $250, $500 and
 $1,000 caps all still lose the account, because capping each basket simply
 books the losses one at a time while the wins stay capped at a few dollars.
 
+### Bar-by-bar trace of the blow-up ($500 account, first day)
+
+`scripts/experiments/dynamic_tp_grid_trace.py` replays the account's only
+trading day so the mechanism is visible rather than summarised:
+
+| Time (UTC) | Event | Positions | Lots | Realised | Balance |
+|---|---|---|---|---|---|
+| 08:20 | TP | 1 | 0.01 | +$4.13 | $504.13 |
+| 08:30 | TP | 2 | 0.03 | +$6.05 | $510.18 |
+| 09:00 | TP | 4 | 0.10 | +$2.82 | $513.00 |
+| … | … | … | … | … | … |
+| 12:20 | TP | 9 | 0.44 | +$63.43 | $621.89 |
+| 12:35 | TP | 3 | 0.06 | +$16.71 | $638.60 |
+| **13:35** | **STOP-OUT** | **20** | **2.08** | **−$874.88** | **−$236.28** |
+
+Thirteen consecutive winning baskets totalling **+$138.60**, then one
+basket losing **−$874.88** — **6.3x everything the EA had earned** — and
+the account is gone in **5.2 hours**. The final basket carried 2.08 lots,
+208 oz, against $500 of capital.
+
+This is what a 93% win rate looks like when the losses are uncapped. The
+equity curve going into 13:35 is a clean rising staircase; nothing in it
+warns you.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
