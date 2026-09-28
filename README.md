@@ -1597,6 +1597,48 @@ This is what a 93% win rate looks like when the losses are uncapped. The
 equity curve going into 13:35 is a clean rising staircase; nothing in it
 warns you.
 
+### Repaired rewrite: `mql5/GoldBot_DynamicTP_Fixed.mq5`
+
+All ten defects fixed, risk bounded, and the defaults chosen from the
+backtest rather than from taste. `InpLotStep` defaults to **0.0** — the
+lot ramp is the single change that turned a survivable grid into a fatal
+one.
+
+Flat 0.01 lot, five years of real XAUUSD M5, by starting capital:
+
+| Config | $500 | $1,000 | $5,000 |
+|---|---|---|---|
+| 20 layers, no cap | WIPED 94d | WIPED 98d | +20% |
+| 20 layers, cap $50 | WIPED 6d | WIPED 13d | -62% |
+| **20 layers, cap $100 (default)** | **+29%** | **+14%** | **+3%** |
+| 10 layers, no cap | +23% | +11% | +2% |
+| 10 layers, cap $50 | -4% | -2% | -0% |
+| 20 layers step $3, no cap | +34% | +17% | +3% |
+| 20 layers step $3, cap $100 | WIPED 63d | -50% | -10% |
+
+Two results here are counterintuitive and both matter more than the
+returns:
+
+**A tighter loss cap is worse.** Halving the cap from $100 to $50 turned
++29% into a wipe-out in 6 days. Too tight a cap keeps realising losses on
+noise before the grid can recover. This is why the cap in the rewrite
+scales with **lots held** (`InpMaxLossPerLotUSD`), not with account
+balance — it has to be wide enough for the grid it protects. A percentage
+-of-balance cap would set a $500 account's limit at exactly the $50 that
+killed it.
+
+**The parameters are not independent.** Step $1 + cap $100 returned +29%
+on $500; step $3 with the same cap was wiped out in 63 days. Neighbouring
+settings flip between healthy and fatal.
+
+That fragility is the real finding. These numbers come from one five-year
+path with no out-of-sample split, and a configuration whose neighbours
+blow up is a knife edge that happened to land well, not a robust system.
+The +29% is not an expectation. Note too that the worst floating loss is
+roughly constant in **dollars** across account sizes (-$113 to -$274), so
+a small account carries far more percentage risk from the identical
+basket.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
