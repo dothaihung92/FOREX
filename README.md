@@ -1769,6 +1769,72 @@ realistic for small orders; 1-2 lot gold orders fill worse than that, so
 treat the figures as an upper bound and verify fills on a demo account
 first.
 
+## AI trader (`gold_bot/ai_trader/`, `scripts/run_ai_trader.py`)
+
+An AI that reads the chart, decides buy/sell, places its own stop and target,
+and manages the open trade - with a risk guard it cannot override.
+
+```
+closed bars -> snapshot (M5/M15/H1/H4, indicators, confirmed S/R levels)
+            -> advisor (Claude, or a rules control)  --proposes-->  Decision
+            -> RiskGuard.review()  --the only door to the broker-->  SimBroker / MT5
+```
+
+**What the AI decides:** open buy/sell, where the stop and target go (placed
+beyond chart structure), adjust an open trade, close early, or do nothing.
+**What it cannot decide:** lot size (code computes it from the stop distance),
+whether a stop exists, and anything that widens risk.
+
+### On "hold the loser if the chart might come back" - deliberately not built
+
+Holding a losing position on the hope of a return is the mechanism that ended
+every no-stop design tested in this repository (the grid EA died in 5.2 hours
+after 13 straight wins; the two-sided grid died in 6 days). The same intent -
+*don't get shaken out by noise* - is served safely instead:
+
+* the AI places the stop **beyond structure** (below support / above resistance),
+  so a normal pullback does not stop the trade out;
+* lot size is derived from that distance, so a wider structural stop means a
+  **smaller lot at the same dollar risk** - room to breathe at no extra risk;
+* an open trade can be **closed early** when its premise breaks, which is the
+  disciplined version of "reading whether it will come back".
+
+### Guarantees enforced in code (and tested)
+
+| Rule | Why |
+|---|---|
+| Stop-loss mandatory, correct side, 1-4 ATR away | no unprotected trade, ever |
+| A stop can only be **tightened**, never widened | no "hoping" |
+| Target extended only once the stop is at breakeven | ride winners risk-free |
+| One position, no averaging down, no pyramiding | every grid/DCA test failed |
+| Lot from stop distance; **rejected, not rounded up**, below min lot | rounding up once silently doubled risk |
+| Net reward:risk >= 1.5 after spread and slippage | costs decide small edges |
+| Daily loss, daily trade count, consecutive-loss cooldown, 15% drawdown halt | caps a bad day or a bad model |
+| Kill-switch file, trading window, spread filter | operational brakes |
+| Any advisor error, refusal, timeout or garbage output -> HOLD | fail closed |
+
+`test_no_advisor_can_get_an_unprotected_or_oversized_position_through` runs an
+advisor that behaves as badly as possible (random actions, stops on the wrong
+side, NaN, 1e9, attempts to widen stops) through the real engine and asserts
+the invariants above hold. It found a genuine bug in the guard (a NaN price
+crashed it instead of being refused), now fixed.
+
+### What is NOT known
+
+**Whether Claude trades gold profitably is unmeasured.** Nothing here
+shows it has an edge, and an LLM cannot be backtested the way fixed rules can:
+the same input may produce a different answer, and a long replay costs real
+money. The rules-only control (`--advisor rules`, free) exists so that any LLM
+result has something to be compared against. The only honest evaluation is
+paper trading on live data for weeks and comparing it to that control.
+
+Control replay on real data, Apr-Jun 2024: 9 trades, 22% win, -$29.73, worst
+single loss -$8.84 against a $10 risk budget. Nine trades prove nothing about
+profitability; they show the engine and the loss bound work on real data.
+
+The MT5 execution path (`MT5Broker`, `paper`/`live` modes) needs Windows and a
+terminal and was **not run** in the authoring environment. Use a demo account.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
