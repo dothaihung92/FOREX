@@ -976,10 +976,10 @@ turned on:
 | Metric | Value |
 |---|---|
 | Trades | 115 |
-| Win rate | 57.39% |
-| Profit factor | **2.28** |
-| Total return (fixed_capital_percent_risk 2%, $500) | +69.57% / 5 years ($500 → $848) |
-| Max drawdown | -9.23% |
+| Win rate | 54.78% (was 57.39% before the cost fix below) |
+| Profit factor | **2.05** (was 2.28) |
+| Total return (fixed_capital_percent_risk 2%, $500) | +60.87% / 5 years ($500 → $804) (was +69.57%) |
+| Max drawdown | -9.95% (was -9.23%) |
 
 (These figures include the hour-7 exclusion from the loss post-mortem and
 the 5:3 R:R ratio from "R:R ratio and pyramiding" below.)
@@ -1871,20 +1871,56 @@ add cost and noise to the prompt with no measured benefit.
 
 ### Correction to earlier headline numbers: costs were understated by half the spread
 
-`backtester.py` charges `spread/2 + slippage` on entry and only slippage on exit, so a
-round trip pays half the spread. Gold costs a full $0.25 round trip on Exness Standard.
-Re-running the default strategy with the full spread charged:
+`backtester.py` charged `spread/2 + slippage` on entry and only slippage on exit, so a
+round trip paid half the quoted spread. Gold costs a full $0.25 round trip on Exness
+Standard. **Fixed** (the exit now also pays `spread/2`); every figure below was re-run:
 
-| Costs | Win | PF | 5-year return ($500 base) |
-|---|---|---|---|
-| as reported (half spread) | 57.4% | 2.28 | +69.6% |
-| **full spread** | **53.9%** | **1.91** | **+54.4%** |
-| full spread, trailing stop off | 40.9% | 1.14 | +18.7% |
+| Default strategy, 5 years, $500 base, 2% risk | Win | PF | Return | Max DD |
+|---|---|---|---|---|
+| before the fix (half spread) | 57.4% | 2.28 | +69.6% | -9.2% |
+| **after the fix (full spread)** | **54.8%** | **2.05** | **+60.9%** | **-10.0%** |
+| after the fix, trailing stop off | - | 1.19 | +25.8% | -21.6% |
 
-Still positive, but smaller than reported. Note the second dependency: roughly
-two thirds of the profit factor comes from the trailing stop, and with it off the
-edge is thin (PF 1.14). Figures elsewhere in this file that used the half-spread
-backtester (including the $100,000 comparison tables) are overstated accordingly.
+Still clearly positive, but ~12% smaller than reported. Figures in older sections of this
+file (parameter sweeps, the $100,000 tables, per-year results) were produced with the
+half-spread backtester and are overstated by a similar proportion; their *rankings* are
+unaffected because the same cost error applied to every variant.
+
+Two more things the re-run shows. Roughly half of the profit comes from the trailing stop
+(off: PF 1.19). And the trailing distance of 1.0 ATR sits on a sharp peak that was tuned on
+this same data: 0.8 -> PF 1.51, 1.0 -> 2.05, 1.2 -> 1.86, 1.5 -> 1.50, 3.0 -> 1.30. Neighbouring
+settings are far worse, which is the signature of a tuned optimum, so expect the live edge to
+be smaller than the backtest.
+
+### Raising the return - what works, what does not (corrected costs)
+
+`scripts/experiments/profit_levers.py`, `risk_bootstrap.py`. A change counts only if it
+helps both 2020-22 and 2023-25.
+
+**Risk per trade is the one reliable lever** - return is linear in it, the edge (PF) does
+not change, and both halves scale together:
+
+| Risk/trade | 5-yr return | Historical max DD | Bootstrap median DD | 95th-pct DD | P(DD > 25%) |
+|---|---|---|---|---|---|
+| 2% (default) | +60.9% | -10.0% | -6.4% | -12.1% | 0.0% |
+| 3% | +90.5% | -15.8% | -8.8% | -17.1% | 0.6% |
+| 4% | +122.2% | -21.2% | -10.9% | -21.8% | 2.4% |
+| 5% | +152.2% | -26.0% | -12.8% | -26.3% | 6.3% |
+| 6% | +181.1% | -30.6% | -14.6% | -30.7% | 11.2% |
+| 8% | +237.3% | -41.4% | -17.7% | -39.0% | 23.0% |
+
+Bootstrap = the 115 real trade results resampled 20,000 times. It captures bad sequencing
+luck, **not** the edge being smaller than measured. The edge itself is +0.265R per trade
+with a 95% interval of [+0.10, +0.44] from only 115 trades. If the true edge were half of
+the backtest, 5% risk gives a median +76% with a 6% chance of losing money and a 95th-
+percentile drawdown of -48%; at a quarter of the edge, a 22% chance of losing money.
+
+| Idea | Result | Verdict |
+|---|---|---|
+| Compound (risk % of current equity) | 3%: +130% vs +91% fixed; gains concentrated in 2023-25 (train +33% vs +36% fixed) | helps in aggregate, not both halves; raises ruin risk after a losing run |
+| Trailing distance retune | 1.0 is already the best of 0.8-3.0 | nothing left; and it is a tuned peak |
+| Stop/target multiples (1.5-2.5 / 3-8) | best alternative TP 8.0: +65.8% all, but test +35.3% < +36.4% | not both halves - rejected |
+| More trades / looser filters / pyramiding / other pairs / indicators | tested earlier | rejected - PF collapses |
 
 ### Verdict
 

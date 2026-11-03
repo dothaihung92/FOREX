@@ -109,7 +109,9 @@ def run_backtest(
                     exit_price, exit_reason = open_trade.take_profit, "take_profit"
 
             if exit_price is not None:
-                exit_price -= direction * slippage
+                # Entry paid half the spread plus slippage; the exit must pay the other
+                # half, or a round trip is charged only half the quoted spread.
+                exit_price -= direction * (slippage + spread / 2)
                 pnl = direction * (exit_price - open_trade.entry_price) * CONTRACT_SIZE * open_trade.lots
                 open_trade.exit_time = ts
                 open_trade.exit_price = exit_price
