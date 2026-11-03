@@ -1835,6 +1835,57 @@ profitability; they show the engine and the loss bound work on real data.
 The MT5 execution path (`MT5Broker`, `paper`/`live` modes) needs Windows and a
 terminal and was **not run** in the authoring environment. Use a demo account.
 
+### Can the AI "learn" from five years of winning and losing trades? (measured: no)
+
+Claude cannot be trained through the API. The only way to give it
+experience is to show it past situations and their outcomes. That is honest
+only if every example had already resolved before the decision, so
+`gold_bot/ai_trader/experience.py` stamps each example with its resolution
+bar, and the study below uses only examples resolved before each month began.
+
+122,016 situations (every 15 min, 08-19 UTC, both directions, SL 1.8 / TP 3.0 ATR,
+full costs) from the 5-year file. Walk-forward, monthly refits, Jan 2022 - Jul 2025
+(88,396 out-of-sample situations). Two learners: kNN (what a retrieval prompt would
+hand a model) and gradient boosting (an upper bound on what is learnable).
+
+| | kNN | Gradient boosting |
+|---|---|---|
+| correlation(predicted, realised R) | +0.015 | +0.018 |
+| worst predicted decile, realised mean R | -0.164 | -0.187 |
+| **best predicted decile, realised mean R** | **-0.117** | **-0.118** |
+| unconditional (all situations) | -0.131 | -0.131 |
+| tradable top 10%, one position at a time | -0.089R, 95% CI [-0.129, -0.050] | -0.096R, CI [-0.143, -0.047] |
+
+Showing the model the best-ranked situations improves the outcome by ~0.014R
+(-0.131 -> -0.117) and the result is still a loss; as a tradable sequence the
+confidence interval excludes zero on the losing side. Experience over generic
+features does not rank future outcomes.
+
+**The instrument works.** Applied to the validated strategy's 115 signals the same
+labeller gives win 40.9%, mean +0.075R, versus -0.131R for random entries, and
+reproduces the repository backtester exactly (40.9% win, PF 1.14) under matching
+assumptions. The edge in this project comes from hand-built, selective rules; a
+learner fed generic indicator values does not rediscover it. So the
+retrieval-of-past-trades feature was **not wired into the AI trader**: it would
+add cost and noise to the prompt with no measured benefit.
+
+### Correction to earlier headline numbers: costs were understated by half the spread
+
+`backtester.py` charges `spread/2 + slippage` on entry and only slippage on exit, so a
+round trip pays half the spread. Gold costs a full $0.25 round trip on Exness Standard.
+Re-running the default strategy with the full spread charged:
+
+| Costs | Win | PF | 5-year return ($500 base) |
+|---|---|---|---|
+| as reported (half spread) | 57.4% | 2.28 | +69.6% |
+| **full spread** | **53.9%** | **1.91** | **+54.4%** |
+| full spread, trailing stop off | 40.9% | 1.14 | +18.7% |
+
+Still positive, but smaller than reported. Note the second dependency: roughly
+two thirds of the profit factor comes from the trailing stop, and with it off the
+edge is thin (PF 1.14). Figures elsewhere in this file that used the half-spread
+backtester (including the $100,000 comparison tables) are overstated accordingly.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
