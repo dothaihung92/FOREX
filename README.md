@@ -1922,6 +1922,35 @@ percentile drawdown of -48%; at a quarter of the edge, a 22% chance of losing mo
 | Stop/target multiples (1.5-2.5 / 3-8) | best alternative TP 8.0: +65.8% all, but test +35.3% < +36.4% | not both halves - rejected |
 | More trades / looser filters / pyramiding / other pairs / indicators | tested earlier | rejected - PF collapses |
 
+### Price-action pattern memory: "remember which candles hit TP, learn from losses" (measured: does not work)
+
+`gold_bot/pa_learner.py`, `scripts/experiments/pa_memory_test.py`. Trend-following only
+(EMA50/200 with slope on the signal timeframe). Each in-trend candle is encoded as one of
+432 price-action patterns - candle shape (pin, strong/weak body with or against the trend),
+previous candle, engulfing, 10-bar breakout, pullback to EMA20, H4 agreement - with the stop
+beyond the last two candles' structure and a fixed R target. The memory keeps each pattern's
+record from every setup it sees, learns an outcome only once that setup has actually hit its
+stop or target, shrinks thin records towards the average, and trades a pattern only while its
+estimate clears a threshold. Losing patterns switch themselves off. This is exactly what an
+MQL5 EA could run with two arrays and a file.
+
+**The premise fails first: a pattern's record does not carry forward.** Correlation between a
+pattern's average result in 2020-22 and in 2023-25 (patterns seen 30+ times in both):
+
+| Signal TF | 1.5R target | 2R | 3R |
+|---|---|---|---|
+| M15 | -0.05 | -0.04 | +0.07 |
+| H1 | -0.16 | -0.20 | -0.13 |
+
+The best fifth of patterns in 2020-22 (+0.03 to +0.15R) became -0.10 to -0.16R in 2023-25,
+on every configuration. There is nothing stable to remember.
+
+**The learner then chases noise.** 54 learner configurations (2 timeframes x 3 targets x 3
+thresholds x 3 prior strengths), all printed by the script: **none is positive in both
+2021-22 and 2023-25**. The only arrangement slightly positive in both halves is the one with
+*no* learning (H1, 3R: +0.023R / +0.061R, t ~ 0.9, not significant) - and switching learning
+on makes it worse (-0.019 / -0.018). Not built into an EA.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
