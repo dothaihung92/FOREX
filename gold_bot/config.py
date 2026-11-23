@@ -42,6 +42,10 @@ class StrategyConfig:
     htf2_ema_period: int = 100
     require_atr_expansion: bool = False  # ATR must be above its own rolling mean (volatility expanding, not contracting)
     atr_expansion_period: int = 20
+    # Price-action confirmation: the signal candle must close in the top part of
+    # its own range (bottom part for shorts) - buyers still in control at the
+    # close. 0 disables. See README "Price-action filter on the validated strategy".
+    min_close_position: float = 0.0
     # USD-strength confirmation from other FX pairs - EXPERIMENTAL, off by
     # default and NOT validated. See gold_bot/correlation.py and README
     # "Gold/FX correlation filter" before enabling.

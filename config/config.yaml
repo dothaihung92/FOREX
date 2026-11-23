@@ -40,6 +40,10 @@ strategy:
   htf2_ema_period: 100
   require_atr_expansion: true       # ATR hiện tại phải cao hơn trung bình 20 nến gần nhất (biến động đang tăng)
   atr_expansion_period: 20
+  # Price action: nến vào lệnh phải đóng cửa ở 30% trên cùng biên độ của nó
+  # (lệnh bán: 30% dưới cùng). Cải thiện cả 2020-22 lẫn 2023-25, mọi ngưỡng
+  # 0.55-0.9 đều tốt lên - xem README "Price-action filter". 0 = tắt.
+  min_close_position: 0.7
 
   # Regime switch: below adx_threshold the market is ranging, so the
   # trend-pullback rules above are disabled and mean-reversion rules below

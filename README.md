@@ -976,10 +976,11 @@ turned on:
 | Metric | Value |
 |---|---|
 | Trades | 115 |
-| Win rate | 54.78% (was 57.39% before the cost fix below) |
-| Profit factor | **2.05** (was 2.28) |
-| Total return (fixed_capital_percent_risk 2%, $500) | +60.87% / 5 years ($500 → $804) (was +69.57%) |
-| Max drawdown | -9.95% (was -9.23%) |
+| Trades | 97 with the price-action filter (115 without) |
+| Win rate | 56.7% (54.8% without; 57.39% was reported before the cost fix) |
+| Profit factor | **2.39** (2.05 without; 2.28 before the cost fix) |
+| Total return (fixed_capital_percent_risk 2%, $500) | **+65.9%** / 5 years (+60.9% without; +69.57% before the cost fix) |
+| Max drawdown | **-7.4%** (-10.0% without) |
 
 (These figures include the hour-7 exclusion from the loss post-mortem and
 the 5:3 R:R ratio from "R:R ratio and pyramiding" below.)
@@ -1950,6 +1951,63 @@ thresholds x 3 prior strengths), all printed by the script: **none is positive i
 2021-22 and 2023-25**. The only arrangement slightly positive in both halves is the one with
 *no* learning (H1, 3R: +0.023R / +0.061R, t ~ 0.9, not significant) - and switching learning
 on makes it worse (-0.019 / -0.018). Not built into an EA.
+
+### Price-action filter on the validated strategy (adopted)
+
+`scripts/experiments/pa_filter_test.py`. Each of the strategy's signals is kept or dropped
+by the candle it fires on. A filter had to improve both 2020-22 and 2023-25 AND beat
+dropping the same number of signals at random (2,000-draw permutation test). A fast
+replica of the backtester was used for the permutations and checked against the real
+one first (115 trades, 54.8% win, PF 2.02 vs 2.05).
+
+| Filter (13 tried) | Kept | 2020-22 meanR | 2023-25 meanR | Both better | p(random) |
+|---|---|---|---|---|---|
+| none | 123 | +0.194 | +0.318 | - | - |
+| **close in top 30% of range** | 100 | **+0.304** | **+0.351** | **yes** | **0.020** |
+| 2-bar reversal | 37 | +0.301 | +0.485 | yes | 0.092 |
+| pin OR engulfing | 23 | +0.251 | +0.386 | yes | 0.283 |
+| strong body >= 60% | 87 | +0.183 | +0.376 | no | 0.300 |
+| not extended from EMA50 | 95 | +0.161 | +0.366 | no | 0.423 |
+| last M15 candle with trend | 92 | +0.100 | +0.285 | no | 0.911 |
+| veto long wick against trade | 118 | +0.205 | +0.300 | no | 0.571 |
+
+p = 0.020 after 13 tries is weak on its own (~0.7 false positives expected at p<0.05).
+What makes it credible is the threshold sweep - **every** cut-off from 0.55 to 0.90
+improves both halves, rising steadily rather than spiking at one value:
+
+| Close position >= | 0.55 | 0.6 | 0.65 | **0.7** | 0.75 | 0.8 | 0.85 | 0.9 |
+|---|---|---|---|---|---|---|---|---|
+| 2020-22 meanR (base +0.194) | +0.206 | +0.237 | +0.254 | **+0.304** | +0.298 | +0.305 | +0.310 | +0.309 |
+| 2023-25 meanR (base +0.318) | +0.324 | +0.332 | +0.332 | **+0.351** | +0.322 | +0.349 | +0.486 | +0.460 |
+
+0.7 was the cut-off written down before the results were seen and sits in the middle
+of that plateau; 0.85 scores higher but choosing it would be fitting to the data. It is
+also a sensible reading of price action: a candle that closes near its high means
+buyers were still in control at the close.
+
+Real backtester, full costs, $500 base, 2% risk:
+
+| | Trades | Win | PF | Return | Max DD |
+|---|---|---|---|---|---|
+| without | 115 | 54.8% | 2.05 | +60.9% | -10.0% |
+| **with (now default)** | **97** | **56.7%** | **2.39** | **+65.9%** | **-7.4%** |
+| with, 2020-22 | 45 | 53.3% | 2.35 | +29.9% | -7.4% |
+| with, 2023-25 | 52 | 59.6% | 2.41 | +36.0% | -6.9% |
+
+The gain is mostly in quality rather than raw return: 18 fewer trades, a smaller
+drawdown, and a higher profit factor. At the same -10% drawdown the risk per trade
+could be about 2.7% instead of 2%.
+
+### `GoldBot_FixedCapitalRisk.mq5` v2.00 - the EA had drifted from the strategy
+
+Version 1.00 traded a different system from the one the backtest describes: stop and
+target 2.0/2.5 ATR instead of 1.8/3.0, only hour 9 excluded instead of 7 and 9, no H1
+confirmation, no ATR-expansion filter, MT5's `iATR` (simple average) instead of Wilder's
+ATR, and MT5's `iMACD` (SMA signal line) instead of an EMA signal line. Version 2.00
+computes ATR, RSI, EMA and MACD itself with the same recurrences as `indicators.py`
+and adds the price-action filter. `tests/test_ea_parity.py` transcribes the EA's
+recurrences and entry conditions line for line and checks they fire on exactly the
+same bars as `generate_signals` on 40,000 real M5 bars. Still not compiled in MT5.
 
 ### Verdict
 

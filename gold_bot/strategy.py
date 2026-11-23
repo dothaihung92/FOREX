@@ -53,6 +53,7 @@ from __future__ import annotations
 
 from datetime import time as dtime
 
+import numpy as np
 import pandas as pd
 
 from gold_bot.config import SessionWindow, StrategyConfig
@@ -199,6 +200,18 @@ def generate_signals(
     else:
         atr_expanding = True
 
+    # Price-action confirmation: where the signal candle closed within its own
+    # range, 0 = at the low, 1 = at the high. A long wants a close near the
+    # high, a short near the low. Validated on both halves, every threshold
+    # from 0.55 to 0.9 improved both (README "Price-action filter ...").
+    if cfg.min_close_position > 0:
+        rng = (out["high"] - out["low"]).replace(0, np.nan)
+        close_pos = (close - out["low"]) / rng
+        close_pos_long_ok = close_pos >= cfg.min_close_position
+        close_pos_short_ok = (1 - close_pos) >= cfg.min_close_position
+    else:
+        close_pos_long_ok = close_pos_short_ok = True
+
     # USD-strength gate (experimental, off by default). Gold is priced in
     # dollars, so a dollar trend is part of every gold move - but that
     # relationship only exists at daily scale, not bar to bar, so this is a
@@ -228,6 +241,7 @@ def generate_signals(
         & hour_ok
         & htf2_ok_long
         & atr_expanding
+        & close_pos_long_ok
     )
     trend_short = (
         downtrend
@@ -241,6 +255,7 @@ def generate_signals(
         & trend_established
         & htf2_ok_short
         & atr_expanding
+        & close_pos_short_ok
     )
 
     out["signal"] = 0

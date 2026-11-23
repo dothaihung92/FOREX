@@ -1,42 +1,46 @@
 //+------------------------------------------------------------------+
-//| GoldBot_FixedCapitalRisk.mq5                                      |
+//| GoldBot_FixedCapitalRisk.mq5                       version 2.00   |
 //| XAUUSD M5 trend-pullback EA, ported from the Python gold_bot      |
 //| project (gold_bot/strategy.py + risk_manager.py).                 |
 //|                                                                    |
-//| Strategy: EMA(fast)/EMA(slow) trend filter on M5, confirmed by an  |
-//| EMA(HTF) trend filter on a higher timeframe; entries only on a     |
-//| shallow RSI pullback resuming in the trend direction, confirmed by |
-//| MACD histogram turning back in that direction; only during the     |
-//| configured London/New York session windows; only when the EMA     |
-//| fast/slow gap is wide enough (trend actually established, not      |
-//| right at the cross - validated on real backtests to matter more    |
-//| than any other single filter); skips a configurable set of UTC     |
-//| hours found to underperform (default: 9, common EU/UK data-release |
-//| time).                                                              |
+//| VERSION 2.00 - brought back in line with the backtested strategy. |
+//| Version 1.00 had drifted from it and was trading a DIFFERENT       |
+//| system from the one the backtest numbers describe:                 |
+//|   - stop/target were 2.0/2.5 ATR; the strategy uses 1.8/3.0        |
+//|   - only hour 9 was excluded; the strategy excludes 7 and 9        |
+//|   - the H1 trend confirmation was missing                          |
+//|   - the ATR-expansion filter was missing                           |
+//|   - MT5's iATR is a SIMPLE average of true range; the strategy     |
+//|     uses Wilder's smoothing, so every stop distance differed       |
+//|   - MT5's iMACD signal line is an SMA; the strategy uses an EMA,   |
+//|     so the MACD condition fired on different bars                  |
+//| ATR, RSI, EMA and MACD are now computed here from closed bars with |
+//| the same recurrences as gold_bot/indicators.py                    |
+//| (tests/test_ea_parity.py checks those recurrences against it).    |
 //|                                                                    |
-//| Sizing: "fixed_capital_percent_risk" - lot is recomputed every      |
-//| trade from InpRiskPercentPerTrade of a FIXED InpBaseEquity (never   |
-//| the live/floating account equity), normalized against the ATR stop |
-//| distance so dollar risk per trade stays constant. This REPLACES    |
-//| the GoldBot_LotStep_0.0X.mq5 files' "equity_step" sizing, which     |
-//| compounds lot size off accumulated profit - a real MT5 Strategy    |
-//| Tester run on that mode hit 100% drawdown because early wins       |
-//| inflated the lot size right before a losing streak hit it. This    |
-//| mode can't do that: lot size only ever depends on the fixed        |
-//| InpBaseEquity and the current ATR stop distance, never on how much |
-//| the account has actually won or lost. See README "Fixed-capital    |
-//| sizing" for the full before/after comparison.                      |
+//| NEW in 2.00 - price-action confirmation: the signal candle must    |
+//| close in the top 30% of its own range for a buy (bottom 30% for a  |
+//| sell). On five years of real XAUUSD M5 with full costs this        |
+//| improved BOTH 2020-22 and 2023-25, and every threshold from 0.55   |
+//| to 0.9 improved both - a broad effect, not a tuned peak:           |
 //|                                                                    |
-//| IMPORTANT: this file was written and reasoned through carefully to |
-//| match the already-validated Python backtest logic, but it has NOT  |
-//| been compiled or run in MetaTrader (no Windows/MT5 available in    |
-//| the authoring environment). Run it in Strategy Tester first, then  |
-//| forward-test on a demo account, before ever attaching to a real     |
-//| account - the usual rule for any new EA, doubly so for one that    |
-//| hasn't been compiled yet.                                          |
+//|               trades  win    PF    5-yr return  max DD             |
+//|   without        115  54.8%  2.05    +60.9%    -10.0%              |
+//|   with            97  56.7%  2.39    +65.9%     -7.4%              |
+//|                                                                    |
+//| (full spread charged; $500 base, 2% risk. Earlier README figures   |
+//| charged only half the spread and were overstated.)                 |
+//|                                                                    |
+//| Sizing: "fixed_capital_percent_risk" - lot from InpRiskPercent of  |
+//| a FIXED InpBaseEquity, never live equity, normalised by the stop   |
+//| distance. A winning streak cannot inflate the lot before a losing  |
+//| streak hits it (that is what blew up the equity_step version).     |
+//|                                                                    |
+//| NOT COMPILED IN METATRADER - no Windows/MT5 in the authoring       |
+//| environment. Strategy Tester first, then a demo account.          |
 //+------------------------------------------------------------------+
 #property copyright "gold_bot project"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -50,12 +54,18 @@ input double   InpRsiOversold          = 30.0;
 input double   InpRsiOverbought        = 70.0;
 input double   InpRsiPullback          = 50.0;
 input int      InpAtrPeriod            = 14;
-input double   InpAtrSlMult            = 2.0;
-input double   InpAtrTpMult            = 2.5;
+input double   InpAtrSlMult            = 1.8;      // 5:3 reward:risk - README "R:R ratio"
+input double   InpAtrTpMult            = 3.0;
 input ENUM_TIMEFRAMES InpHtfTimeframe  = PERIOD_M15;
 input int      InpHtfEmaPeriod         = 100;
+input bool     InpRequireHtf2          = true;     // H1 must agree too - README "Confluence filters"
+input ENUM_TIMEFRAMES InpHtf2Timeframe = PERIOD_H1;
+input int      InpHtf2EmaPeriod        = 100;
+input bool     InpRequireAtrExpansion  = true;     // ATR above its own 20-bar mean
+input int      InpAtrExpansionPeriod   = 20;
+input double   InpMinClosePosition     = 0.7;      // price action: close in top 30% of range (0 = off)
 input double   InpMinTrendStrengthPct  = 0.0256;   // skip entries when |EMAfast-EMAslow|/close*100 is below this
-input string   InpExcludedHoursUtc     = "9";      // comma-separated UTC hours to skip, e.g. "9,14"
+input string   InpExcludedHoursUtc     = "7,9";    // comma-separated UTC hours to skip
 
 input group "=== Sessions (UTC) ==="
 input string   InpSession1Start        = "07:00";
@@ -66,63 +76,140 @@ input int      InpBrokerUtcOffsetHours = 0;        // broker server time minus U
 
 input group "=== Risk / fixed_capital_percent_risk sizing ==="
 input double   InpBaseEquity           = 500.0;    // FIXED capital used for sizing - never the live account equity
-input double   InpRiskPercentPerTrade  = 2.0;       // % of InpBaseEquity risked per trade (see README comparison table)
+input double   InpRiskPercentPerTrade  = 2.0;      // % of InpBaseEquity risked per trade
 input bool     InpUseTrailingStop      = true;
 input double   InpTrailingAtrMult      = 1.0;
 input int      InpMaxTradesPerDay      = 4;
-input double   InpMaxDailyLossPct      = 3.0;       // circuit breaker, also computed against InpBaseEquity - see CanOpenTrade()
+input double   InpMaxDailyLossPct      = 3.0;      // circuit breaker, against InpBaseEquity
 input int      InpMaxConcurrentTrades  = 1;
 input int      InpMagicNumber          = 20240502;
 input int      InpSlippagePoints       = 50;
 
 CTrade trade;
 
-int hEmaFastM5 = INVALID_HANDLE;
-int hEmaSlowM5 = INVALID_HANDLE;
-int hRsiM5     = INVALID_HANDLE;
-int hAtrM5     = INVALID_HANDLE;
-int hMacdM5    = INVALID_HANDLE;
-int hEmaHtf    = INVALID_HANDLE;
+int hEmaHtf  = INVALID_HANDLE;
+int hEmaHtf2 = INVALID_HANDLE;
 
 datetime g_lastBarTime = 0;
 int      g_excludedHours[];
 
+// Indicator arrays over the last HIST closed M5 bars, oldest first.
+// The last element (HIST-1) is the bar that just closed ("bar 1").
+#define HIST 600
+double g_o[], g_h[], g_l[], g_c[];
+double g_emaFast[], g_emaSlow[], g_rsi[], g_atr[], g_hist[];
+datetime g_t[];
+
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   hEmaFastM5 = iMA(_Symbol, PERIOD_M5, InpEmaFast, 0, MODE_EMA, PRICE_CLOSE);
-   hEmaSlowM5 = iMA(_Symbol, PERIOD_M5, InpEmaSlow, 0, MODE_EMA, PRICE_CLOSE);
-   hRsiM5     = iRSI(_Symbol, PERIOD_M5, InpRsiPeriod, PRICE_CLOSE);
-   hAtrM5     = iATR(_Symbol, PERIOD_M5, InpAtrPeriod);
-   hMacdM5    = iMACD(_Symbol, PERIOD_M5, 12, 26, 9, PRICE_CLOSE);
-   hEmaHtf    = iMA(_Symbol, InpHtfTimeframe, InpHtfEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
-
-   if(hEmaFastM5==INVALID_HANDLE || hEmaSlowM5==INVALID_HANDLE || hRsiM5==INVALID_HANDLE ||
-      hAtrM5==INVALID_HANDLE || hMacdM5==INVALID_HANDLE || hEmaHtf==INVALID_HANDLE)
+   hEmaHtf  = iMA(_Symbol, InpHtfTimeframe,  InpHtfEmaPeriod,  0, MODE_EMA, PRICE_CLOSE);
+   hEmaHtf2 = iMA(_Symbol, InpHtf2Timeframe, InpHtf2EmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(hEmaHtf==INVALID_HANDLE || hEmaHtf2==INVALID_HANDLE)
    {
-      Print("GoldBot: failed to create an indicator handle");
+      Print("GoldBot: failed to create a higher-timeframe EMA handle");
       return(INIT_FAILED);
    }
-
    trade.SetExpertMagicNumber(InpMagicNumber);
    trade.SetDeviationInPoints(InpSlippagePoints);
-
+   trade.SetTypeFillingBySymbol(_Symbol);
    ParseExcludedHours();
    return(INIT_SUCCEEDED);
 }
 
 void OnDeinit(const int reason)
 {
-   IndicatorRelease(hEmaFastM5);
-   IndicatorRelease(hEmaSlowM5);
-   IndicatorRelease(hRsiM5);
-   IndicatorRelease(hAtrM5);
-   IndicatorRelease(hMacdM5);
    IndicatorRelease(hEmaHtf);
+   IndicatorRelease(hEmaHtf2);
 }
 
 //+------------------------------------------------------------------+
-//| Parse "9,14" -> {9,14}                                            |
+//| Indicators, with the same recurrences as gold_bot/indicators.py:  |
+//|   EMA  : pandas ewm(span, adjust=False), seeded with the first    |
+//|          value                                                    |
+//|   RSI  : Wilder (ewm alpha=1/period) of gains and losses          |
+//|   ATR  : Wilder (ewm alpha=1/period) of true range                |
+//|   MACD : EMA12-EMA26, signal = EMA9 of that (NOT an SMA, which is  |
+//|          what MT5's iMACD uses), histogram = macd - signal        |
+//| 600 bars of history make the seed's influence negligible.         |
+//+------------------------------------------------------------------+
+void EmaSeries(const double &x[], int period, double &out[])
+{
+   int n = ArraySize(x);
+   ArrayResize(out, n);
+   double a = 2.0/(period+1.0);
+   out[0] = x[0];
+   for(int i=1; i<n; i++) out[i] = a*x[i] + (1.0-a)*out[i-1];
+}
+
+void WilderRsi(const double &c[], int period, double &out[])
+{
+   int n = ArraySize(c);
+   ArrayResize(out, n);
+   double a = 1.0/period, ag = 0.0, al = 0.0;
+   out[0] = 50.0;
+   for(int i=1; i<n; i++)
+   {
+      double d = c[i]-c[i-1];
+      double g = d>0 ? d : 0.0, l = d<0 ? -d : 0.0;
+      if(i==1) { ag = g; al = l; }
+      else     { ag = a*g + (1.0-a)*ag; al = a*l + (1.0-a)*al; }
+      out[i] = (al==0.0) ? 100.0 : 100.0 - 100.0/(1.0 + ag/al);
+   }
+}
+
+void WilderAtr(const double &h[], const double &l[], const double &c[], int period, double &out[])
+{
+   int n = ArraySize(c);
+   ArrayResize(out, n);
+   double a = 1.0/period;
+   out[0] = h[0]-l[0];
+   for(int i=1; i<n; i++)
+   {
+      double tr = MathMax(h[i]-l[i], MathMax(MathAbs(h[i]-c[i-1]), MathAbs(l[i]-c[i-1])));
+      out[i] = a*tr + (1.0-a)*out[i-1];
+   }
+}
+
+bool LoadM5()
+{
+   MqlRates r[];
+   ArraySetAsSeries(r, false);
+   if(CopyRates(_Symbol, PERIOD_M5, 1, HIST, r) < HIST) return false;   // shift 1: closed bars only
+   ArrayResize(g_o,HIST); ArrayResize(g_h,HIST); ArrayResize(g_l,HIST); ArrayResize(g_c,HIST); ArrayResize(g_t,HIST);
+   for(int i=0; i<HIST; i++) { g_o[i]=r[i].open; g_h[i]=r[i].high; g_l[i]=r[i].low; g_c[i]=r[i].close; g_t[i]=r[i].time; }
+   EmaSeries(g_c, InpEmaFast, g_emaFast);
+   EmaSeries(g_c, InpEmaSlow, g_emaSlow);
+   WilderRsi(g_c, InpRsiPeriod, g_rsi);
+   WilderAtr(g_h, g_l, g_c, InpAtrPeriod, g_atr);
+   double e12[], e26[], macd[], sig[];
+   EmaSeries(g_c, 12, e12); EmaSeries(g_c, 26, e26);
+   ArrayResize(macd, HIST);
+   for(int i=0; i<HIST; i++) macd[i] = e12[i]-e26[i];
+   EmaSeries(macd, 9, sig);
+   ArrayResize(g_hist, HIST);
+   for(int i=0; i<HIST; i++) g_hist[i] = macd[i]-sig[i];
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Higher-timeframe trend as the backtest sees it: the HTF bar BEFORE |
+//| the one that contains the signal bar (only fully closed HTF bars). |
+//+------------------------------------------------------------------+
+int HtfTrend(ENUM_TIMEFRAMES tf, int handle, datetime signalBarTime)
+{
+   int sh = iBarShift(_Symbol, tf, signalBarTime, false);
+   if(sh < 0) return 0;
+   sh += 1;
+   double e[]; ArraySetAsSeries(e, true);
+   if(CopyBuffer(handle, 0, sh, 1, e) < 1) return 0;
+   double c = iClose(_Symbol, tf, sh);
+   if(c <= 0) return 0;
+   if(c > e[0]) return 1;
+   if(c < e[0]) return -1;
+   return 0;
+}
+
 //+------------------------------------------------------------------+
 void ParseExcludedHours()
 {
@@ -278,11 +365,15 @@ bool CanOpenTrade()
 }
 
 //+------------------------------------------------------------------+
-//| Trail the stop loss of any open position in our favor only.       |
+//| Trailing stop, as the backtest does it: after each closed bar the  |
+//| stop moves to close - mult x ATR (Wilder) if that is better.       |
 //+------------------------------------------------------------------+
-void ManageTrailingStop(double atrValue)
+void ManageTrailingStop()
 {
-   if(!InpUseTrailingStop || atrValue<=0) return;
+   if(!InpUseTrailingStop) return;
+   int k = HIST-1;
+   double atr1 = g_atr[k], close1 = g_c[k];
+   if(atr1 <= 0) return;
 
    for(int i=0; i<PositionsTotal(); i++)
    {
@@ -292,16 +383,13 @@ void ManageTrailingStop(double atrValue)
       if(PositionGetString(POSITION_SYMBOL)!=_Symbol) continue;
       if((long)PositionGetInteger(POSITION_MAGIC)!=InpMagicNumber) continue;
 
-      long type = PositionGetInteger(POSITION_TYPE);
-      int direction = (type==POSITION_TYPE_BUY) ? 1 : -1;
-      double curPrice = (direction==1) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      int direction = (PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY) ? 1 : -1;
       double curSl = PositionGetDouble(POSITION_SL);
       double tp    = PositionGetDouble(POSITION_TP);
-
-      double newSl = curPrice - direction*InpTrailingAtrMult*atrValue;
-      bool better = (direction==1) ? (newSl > curSl) : (newSl < curSl);
-      if(better)
-         trade.PositionModify(ticket, newSl, tp);
+      double newSl = NormalizeDouble(close1 - direction*InpTrailingAtrMult*atr1, _Digits);
+      bool better = (direction==1) ? (newSl > curSl) : (curSl==0 || newSl < curSl);
+      if(better && !trade.PositionModify(ticket, newSl, tp))
+         PrintFormat("trailing modify failed: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
    }
 }
 
@@ -311,107 +399,95 @@ void CheckEntrySignal()
    if(!CanOpenTrade()) return;
    if(CountOpenPositions() > 0) return;
 
-   double emaFast[], emaSlow[], rsiBuf[], atrBuf[], macdMain[], macdSignal[], closeBuf[];
-   ArraySetAsSeries(emaFast,true); ArraySetAsSeries(emaSlow,true);
-   ArraySetAsSeries(rsiBuf,true);  ArraySetAsSeries(atrBuf,true);
-   ArraySetAsSeries(macdMain,true);ArraySetAsSeries(macdSignal,true);
-   ArraySetAsSeries(closeBuf,true);
+   int k = HIST-1;                              // bar 1 = the bar that just closed
+   double close1 = g_c[k], high1 = g_h[k], low1 = g_l[k];
+   double emaFast1 = g_emaFast[k], emaSlow1 = g_emaSlow[k];
+   double rsi1 = g_rsi[k], rsi2 = g_rsi[k-1];
+   double atr1 = g_atr[k];
+   if(atr1 <= 0) return;
 
-   if(CopyBuffer(hEmaFastM5,0,0,3,emaFast)<3) return;
-   if(CopyBuffer(hEmaSlowM5,0,0,3,emaSlow)<3) return;
-   if(CopyBuffer(hRsiM5,0,0,10,rsiBuf)<10) return;
-   if(CopyBuffer(hAtrM5,0,0,3,atrBuf)<3) return;
-   if(CopyBuffer(hMacdM5,0,0,10,macdMain)<10) return;   // MACD main line
-   if(CopyBuffer(hMacdM5,1,0,10,macdSignal)<10) return; // MACD signal line
-   if(CopyClose(_Symbol,PERIOD_M5,0,3,closeBuf)<3) return;
-
-   // Index 1 = last fully closed M5 bar (index 0 may still be forming).
-   double close1    = closeBuf[1];
-   double emaFast1  = emaFast[1];
-   double emaSlow1  = emaSlow[1];
-   double rsi1      = rsiBuf[1];
-   double rsi2      = rsiBuf[2];
-   double atr1      = atrBuf[1];
-   double macdHist1 = macdMain[1]-macdSignal[1];
-   double macdHist2 = macdMain[2]-macdSignal[2];
-
-   if(atr1<=0) return;
-
-   // Higher-timeframe trend, using the last fully CLOSED HTF bar (shift=1)
-   // so we never peek at an HTF bar still forming alongside this M5 bar.
-   double htfEma[]; ArraySetAsSeries(htfEma,true);
-   double htfClose[]; ArraySetAsSeries(htfClose,true);
-   if(CopyBuffer(hEmaHtf,0,1,2,htfEma)<2) return;
-   if(CopyClose(_Symbol,InpHtfTimeframe,1,2,htfClose)<2) return;
-
-   int htfTrend = 0;
-   if(htfClose[0] > htfEma[0]) htfTrend = 1;
-   else if(htfClose[0] < htfEma[0]) htfTrend = -1;
+   datetime bar1TimeServer = g_t[k];
+   int htfTrend  = HtfTrend(InpHtfTimeframe,  hEmaHtf,  bar1TimeServer);
+   int htf2Trend = HtfTrend(InpHtf2Timeframe, hEmaHtf2, bar1TimeServer);
 
    bool uptrend   = (close1 > emaSlow1) && (htfTrend > 0);
    bool downtrend = (close1 < emaSlow1) && (htfTrend < 0);
 
-   // "Recent oversold/overbought": RSI touched near-extreme at any of the
-   // 6 bars strictly before the signal bar (indices 2..7).
+   // RSI touched near-extreme on any of the 6 bars strictly before bar 1.
    bool recentOversold=false, recentOverbought=false;
-   for(int i=2; i<=7; i++)
+   for(int i=k-6; i<=k-1; i++)
    {
-      if(rsiBuf[i] <= InpRsiOversold+5) recentOversold=true;
-      if(rsiBuf[i] >= InpRsiOverbought-5) recentOverbought=true;
+      if(g_rsi[i] <= InpRsiOversold+5)   recentOversold=true;
+      if(g_rsi[i] >= InpRsiOverbought-5) recentOverbought=true;
    }
-
    bool rsiCrossUp   = (rsi1 > InpRsiPullback) && (rsi2 <= InpRsiPullback);
    bool rsiCrossDown = (rsi1 < (100-InpRsiPullback)) && (rsi2 >= (100-InpRsiPullback));
+   bool macdRising   = g_hist[k] > g_hist[k-1];
+   bool macdFalling  = g_hist[k] < g_hist[k-1];
 
-   bool macdRising  = macdHist1 > macdHist2;
-   bool macdFalling = macdHist1 < macdHist2;
-
-   datetime timeArr[]; ArraySetAsSeries(timeArr,true);
-   if(CopyTime(_Symbol,PERIOD_M5,0,3,timeArr)<3) return;
-   datetime bar1TimeUtc = timeArr[1] - InpBrokerUtcOffsetHours*3600;
-
+   datetime bar1TimeUtc = bar1TimeServer - InpBrokerUtcOffsetHours*3600;
    bool sessionOk = InSession(bar1TimeUtc);
-   MqlDateTime dtStruct;
-   TimeToStruct(bar1TimeUtc, dtStruct);
-   bool hourOk = !IsHourExcluded(dtStruct.hour);
+   MqlDateTime dts; TimeToStruct(bar1TimeUtc, dts);
+   bool hourOk = !IsHourExcluded(dts.hour);
 
-   double trendStrengthPct = MathAbs(emaFast1-emaSlow1)/close1*100.0;
-   bool trendEstablished = trendStrengthPct > InpMinTrendStrengthPct;
+   bool trendEstablished = MathAbs(emaFast1-emaSlow1)/close1*100.0 > InpMinTrendStrengthPct;
 
-   bool longSignal = uptrend && recentOversold && rsiCrossUp && macdRising &&
-                     (close1 > emaFast1) && sessionOk && hourOk && trendEstablished;
-   bool shortSignal = downtrend && recentOverbought && rsiCrossDown && macdFalling &&
-                      (close1 < emaFast1) && sessionOk && hourOk && trendEstablished;
+   bool htf2Long  = !InpRequireHtf2 || htf2Trend > 0;
+   bool htf2Short = !InpRequireHtf2 || htf2Trend < 0;
 
+   bool atrExpanding = true;
+   if(InpRequireAtrExpansion)
+   {
+      double sum = 0.0;
+      for(int i=k-InpAtrExpansionPeriod+1; i<=k; i++) sum += g_atr[i];   // includes bar 1, as rolling().mean() does
+      atrExpanding = atr1 > sum/InpAtrExpansionPeriod;
+   }
+
+   // Price action: where bar 1 closed within its own range (0 = low, 1 = high).
+   bool closeLongOk = true, closeShortOk = true;
+   if(InpMinClosePosition > 0)
+   {
+      double rng = high1 - low1;
+      if(rng <= 0) { closeLongOk = false; closeShortOk = false; }
+      else
+      {
+         double pos = (close1 - low1)/rng;
+         closeLongOk  = pos >= InpMinClosePosition;
+         closeShortOk = (1.0 - pos) >= InpMinClosePosition;
+      }
+   }
+
+   bool longSignal = uptrend && recentOversold && rsiCrossUp && macdRising && (close1 > emaFast1) &&
+                     sessionOk && hourOk && trendEstablished && htf2Long && atrExpanding && closeLongOk;
+   bool shortSignal = downtrend && recentOverbought && rsiCrossDown && macdFalling && (close1 < emaFast1) &&
+                      sessionOk && hourOk && trendEstablished && htf2Short && atrExpanding && closeShortOk;
    if(!longSignal && !shortSignal) return;
 
    int direction = longSignal ? 1 : -1;
    double price = (direction==1) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double sl = price - direction*InpAtrSlMult*atr1;
-   double tp = price + direction*InpAtrTpMult*atr1;
+   double sl = NormalizeDouble(price - direction*InpAtrSlMult*atr1, _Digits);
+   double tp = NormalizeDouble(price + direction*InpAtrTpMult*atr1, _Digits);
 
    double lots = GetLots(price, sl);
    if(lots<=0) return;
 
-   if(direction==1)
-      trade.Buy(lots, _Symbol, price, sl, tp, "GoldBot long");
-   else
-      trade.Sell(lots, _Symbol, price, sl, tp, "GoldBot short");
+   bool ok = (direction==1) ? trade.Buy(lots, _Symbol, 0.0, sl, tp, "GoldBot long")
+                            : trade.Sell(lots, _Symbol, 0.0, sl, tp, "GoldBot short");
+   if(!ok)
+      PrintFormat("entry rejected: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
 }
 
 //+------------------------------------------------------------------+
-//| Only act once per newly closed M5 bar - not every tick.           |
+//| Act once per newly closed M5 bar - not every tick.                |
 //+------------------------------------------------------------------+
 void OnTick()
 {
    datetime curBarTime = iTime(_Symbol, PERIOD_M5, 0);
    if(curBarTime == g_lastBarTime) return;
+   if(!LoadM5()) return;                         // not enough history yet: try again next tick
    g_lastBarTime = curBarTime;
 
-   double atrBuf[]; ArraySetAsSeries(atrBuf,true);
-   if(CopyBuffer(hAtrM5,0,0,2,atrBuf) >= 2)
-      ManageTrailingStop(atrBuf[1]);
-
+   ManageTrailingStop();
    CheckEntrySignal();
 }
 //+------------------------------------------------------------------+
