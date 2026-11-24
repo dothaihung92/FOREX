@@ -2112,6 +2112,31 @@ loss for +20% in five years (ret/DD ~0.5); the same entries with a stop made +64
 -7.8% drawdown at 2% risk. Removing the stop does not create an edge; it moves the losses
 into rare, large drawdowns.
 
+### $100,000 configuration, trailing back ON, and DCA (`scripts/experiments/dca_basket_test.py`)
+
+Defaults now: `base_equity: 100000`, `initial_balance: 100000`, 2% risk ($2,000 per trade,
+about 5 lots at a typical $3.8 stop), `min_lot`/`lot_step` 0.01, trailing stop ON. EA v2.02
+matches (`InpBaseEquity = 100000`, `InpUseTrailingStop = true`). Real backtester: 97 trades,
+PF 2.33, +63.9% ($100,000 -> $163,875), max drawdown -7.8%.
+
+DCA was tested on the same entries: add legs as price moves against the trade, close the
+whole basket at the target, one hard stop for the basket - sized so a full basket risks the
+same 2% as one trade. All 13 variants:
+
+| Variant | Win | PF | 5-yr return | Max DD | 2020-22 | 2023-25 |
+|---|---|---|---|---|---|---|
+| **current: 1 trade, trailing ON** | 56.7% | 2.33 | **+63.9%** | -6.5% | +27.4% | +36.5% |
+| 2 legs, 0.5 ATR, original TP | 56.7% | 1.34 | +28.5% | -11.3% | +18.5% | +10.0% |
+| 4 legs, 1.0 ATR, original TP | 74.7% | 1.44 | +21.2% | -6.5% | +2.3% | +18.9% |
+| 3 legs, 0.5 ATR, small TP | 89.7% | 1.95 | +18.9% | -6.5% | +8.5% | +10.4% |
+| 4 legs, 1.0 ATR, small TP | **95.8%** | 2.52 | +12.2% | -1.9% | +7.1% | +5.1% |
+| (others: see script output) | 54-93% | 1.12-2.30 | +8% to +26% | | | |
+
+DCA raises the win rate to as much as 96% and cuts the return by 70-85% in every variant.
+The strategy earns most on trades that work immediately; with the basket's risk fixed, DCA
+makes the first leg smaller, so those trades earn less, while the extra legs mostly add to
+trades that were going to lose. **Not built into the EA.**
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the

@@ -69,7 +69,7 @@ risk:
   max_trades_per_day: 4
   max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
   max_concurrent_trades: 1
-  use_trailing_stop: false  # TẮT theo yêu cầu. Bật lại (true) cho sụt giảm thấp hơn: ON PF 2.33 / DD -7.8%, OFF PF 1.56 / DD -17.3% - xem README
+  use_trailing_stop: true   # BẬT: ON PF 2.33 / DD -7.8%, OFF PF 1.56 / DD -17.3% - xem README
   trailing_atr_mult: 1.0  # tuned: tighter trailing locks in profit sooner, improves both return and drawdown
 
   # Cách tính khối lượng lệnh (lot):
@@ -98,18 +98,18 @@ risk:
   #                   dca_hard_stop_pct (bắt buộc phải có, xem README "DCA/grid mode").
   #                   Rủi ro cao hơn hẳn các mode trên - đọc kỹ README trước khi dùng.
   sizing_mode: fixed_capital_percent_risk
-  base_equity: 500.0
+  base_equity: 100000.0     # vốn $100.000: rủi ro 2% = $2.000 mỗi lệnh (khoảng 5 lot với SL ~$3.8)
   base_lot: 0.02
-  lot_step: 0.02
+  lot_step: 0.01
   equity_step_usd: 100.0
-  min_lot: 0.02
+  min_lot: 0.01
   dca_step_price: 2.0
   dca_leg_risk_pct: 2.0
   dca_max_legs: 30
   dca_hard_stop_pct: 15.0
 
 backtest:
-  initial_balance: 500
+  initial_balance: 100000
   # Hồ sơ chi phí giao dịch. Mặc định dưới đây khớp tài khoản Exness Standard
   # (No commission, min deposit 10 USD, leverage 1:Unlimited).
   #

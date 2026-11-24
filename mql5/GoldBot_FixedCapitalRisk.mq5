@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| GoldBot_FixedCapitalRisk.mq5                       version 2.01   |
+//| GoldBot_FixedCapitalRisk.mq5                       version 2.02   |
 //| XAUUSD M5 trend-pullback EA, ported from the Python gold_bot      |
 //| project (gold_bot/strategy.py + risk_manager.py).                 |
 //|                                                                    |
@@ -28,7 +28,7 @@
 //|   without        115  54.8%  2.05    +60.9%    -10.0%              |
 //|   with            97  56.7%  2.39    +65.9%     -7.4%              |
 //|                                                                    |
-//|   with, trailing stop OFF (the default since v2.01)               |
+//|   with, trailing stop OFF (optional, InpUseTrailingStop = false)   |
 //|                   97  50.5%  1.56    +57.1%    -17.3%             |
 //|   (OFF roughly doubles drawdown; set InpUseTrailingStop = true to  |
 //|   get the "with" row back)                                         |
@@ -45,7 +45,7 @@
 //| environment. Strategy Tester first, then a demo account.          |
 //+------------------------------------------------------------------+
 #property copyright "gold_bot project"
-#property version   "2.01"
+#property version   "2.02"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -80,9 +80,9 @@ input string   InpSession2End          = "16:00";
 input int      InpBrokerUtcOffsetHours = 0;        // broker server time minus UTC (check your broker!)
 
 input group "=== Risk / fixed_capital_percent_risk sizing ==="
-input double   InpBaseEquity           = 500.0;    // FIXED capital used for sizing - never the live account equity
+input double   InpBaseEquity           = 100000.0; // FIXED capital used for sizing - never the live account equity
 input double   InpRiskPercentPerTrade  = 2.0;      // % of InpBaseEquity risked per trade
-input bool     InpUseTrailingStop      = false;    // OFF by request; true halves the drawdown (README)
+input bool     InpUseTrailingStop      = true;     // ON: drawdown about half of OFF (README)
 input double   InpTrailingAtrMult      = 1.0;
 input int      InpMaxTradesPerDay      = 4;
 input double   InpMaxDailyLossPct      = 3.0;      // circuit breaker, against InpBaseEquity
