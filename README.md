@@ -2077,6 +2077,21 @@ base, so a drawdown raises the effective risk on what is left: at 10%, ten strai
 (about a 1% chance in five years at the measured 43% loss rate) erase the base entirely.
 The longest losing streak on record is 5 trades = -50% of the base at 10%.
 
+### Trailing stop switched OFF (user's choice)
+
+`use_trailing_stop: false` in config.yaml and `InpUseTrailingStop = false` in the EA (v2.01).
+Measured on the current strategy (with the price-action filter), $10,000 base, 2% risk:
+
+| | Trades | Win | PF | 5-yr return | Max DD | ret/DD | 2020-22 | 2023-25 | Hit TP | Avg loss | Median hold |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| trailing ON (1 ATR) | 97 | 56.7% | 2.33 | +64.0% | -7.8% | 8.21 | +27.4% | +36.6% | 28% | -0.57R | 20 min |
+| **trailing OFF** | 97 | 50.5% | 1.56 | +57.1% | **-17.3%** | 3.30 | +27.7% | +29.3% | 51% | -1.05R | 45 min |
+
+Still profitable in both halves and the return is only ~7 points lower, but the drawdown more
+than doubles: with the trailing stop on, a losing trade is usually closed at about half the
+planned risk because the stop tightens after the first bar; with it off, every loser runs to the
+full stop. At the same drawdown, trailing ON could run ~2.2x the risk per trade.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the

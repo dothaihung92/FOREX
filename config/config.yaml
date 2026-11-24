@@ -69,7 +69,7 @@ risk:
   max_trades_per_day: 4
   max_daily_loss_pct: 3.0      # dừng bot trong ngày nếu lỗ vượt mức này
   max_concurrent_trades: 1
-  use_trailing_stop: true
+  use_trailing_stop: false  # TẮT theo yêu cầu. Bật lại (true) cho sụt giảm thấp hơn: ON PF 2.33 / DD -7.8%, OFF PF 1.56 / DD -17.3% - xem README
   trailing_atr_mult: 1.0  # tuned: tighter trailing locks in profit sooner, improves both return and drawdown
 
   # Cách tính khối lượng lệnh (lot):
