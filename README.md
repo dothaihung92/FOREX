@@ -2092,6 +2092,26 @@ than doubles: with the trailing stop on, a losing trade is usually closed at abo
 planned risk because the stop tightens after the first bar; with it off, every loser runs to the
 full stop. At the same drawdown, trailing ON could run ~2.2x the risk per trade.
 
+### No stop-loss, small take-profit, $100,000 account (`scripts/experiments/no_stop_small_tp_test.py`)
+
+On the real 2020-25 data - a +72% gold bull market - every variant "wins": 100% of trades
+eventually reach a $2-$5 target. That is the trap. Re-run on the same five years with the
+trend reversed (log-mirrored path: identical volatility, gold falls 42% from $1,955 to
+$1,137, comparable to 2011-2015):
+
+| Variant (no stop-loss) | Market | Trades hit TP | Profit from TPs | Worst account moment |
+|---|---|---|---|---|
+| Strategy entries, TP $2, 1 lot | real (bull) | 100% | +$20,000 | **-$35,804** |
+| Strategy entries, TP $2, 1 lot | reversed (bear) | 100% | +$20,200 | **-$39,698** |
+| Buy only, daily, TP $5, 0.1 lot | real (bull) | 100% | +$63,850 | -$14,673 |
+| Buy only, daily, TP $5, 0.1 lot | reversed (bear) | 96% | +$61,050 | **-$283,635 - account gone** |
+
+The buy-only version wins 96% of its trades and is wiped out several times over. The
+trend-following entries survive both paths, but only by sitting through a ~-40% floating
+loss for +20% in five years (ret/DD ~0.5); the same entries with a stop made +64% with a
+-7.8% drawdown at 2% risk. Removing the stop does not create an edge; it moves the losses
+into rare, large drawdowns.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
