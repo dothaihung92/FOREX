@@ -2009,6 +2009,54 @@ and adds the price-action filter. `tests/test_ea_parity.py` transcribes the EA's
 recurrences and entry conditions line for line and checks they fire on exactly the
 same bars as `generate_signals` on 40,000 real M5 bars. Still not compiled in MT5.
 
+### Strategy review: can we trade more often AND earn more? (Nov 2026)
+
+`scripts/experiments/strategy_review.py`. Yardstick: return per unit of drawdown (ret/DD),
+because with fixed-fraction sizing the best ret/DD earns the most at any chosen level of
+pain. Real backtester, full costs, $10,000 fixed base, 1% risk; must be profitable in both
+2020-22 and 2023-25.
+
+| Stream | Trades/yr | 5-yr return | Max DD | ret/DD | PF | 2020-22 | 2023-25 |
+|---|---|---|---|---|---|---|---|
+| **M5 current (all filters)** | **20** | **+32.0%** | **-3.9%** | **8.11** | **2.33** | +13.8% | +18.2% |
+| M5 sessions 07-20 | 25 | +28.0% | -4.7% | 6.01 | 1.78 | +12.4% | +15.6% |
+| M5 no H1 confirmation | 23 | +32.4% | -3.9% | 8.21 | 2.08 | +12.5% | +19.9% |
+| M5 no ATR-expansion | 21 | +30.7% | -3.9% | 7.78 | 2.14 | +12.9% | +17.7% |
+| M5 no close-position | 23 | +29.6% | -5.4% | 5.44 | 2.01 | +10.9% | +18.7% |
+| M5 no trend-strength | 30 | +23.5% | -7.3% | 3.22 | 1.53 | +11.2% | +12.2% |
+| M15 same logic | 18 | -17.3% | -20.5% | - | 0.56 | -5.7% | -11.6% |
+| H1 same logic | 7 | -6.3% | -8.8% | - | 0.60 | -5.3% | -1.0% |
+| H1 Donchian-20 + H4 trend | 132 | +7.6% | -37.5% | 0.20 | 1.02 | -15.4% | +21.5% |
+| H1 Donchian, long only | 76 | +29.5% | -27.1% | 1.09 | 1.14 | -10.6% | +38.6% |
+
+Findings:
+
+* **The filters are not what keeps the trade count low.** Removing any one of them adds
+  1-10 trades a year; the core entry (RSI pullback re-crossing 50 with MACD turning) is
+  the bottleneck. Removing filters lowers ret/DD every time. "No H1 confirmation" scores
+  marginally higher (8.21 vs 8.11), a difference well inside noise - not adopted.
+* **The same logic loses on M15 and H1** (PF 0.56-0.60). The M5 edge does not transfer
+  across timeframes, which is a warning that part of it may be specific to the M5
+  parameters it was developed on. A reason to keep risk moderate, not a reason to drop it.
+* **Classic trend-following trades far more but only works in a bull market.** H1
+  Donchian makes 132 trades a year, lost 15% in 2020-22 and made 21.5% in 2023-25;
+  long-only is the 2023-25 gold rally, not an edge.
+* Nothing qualified to build a portfolio from: only one stream passed.
+
+The only lever that raises profit without lowering ret/DD is risk per trade
+(bootstrap of the 97 trades, 20,000 resamples):
+
+| Risk/trade | Median 5-yr | Per year | Median DD | 95th-pct DD | P(DD > 20%) |
+|---|---|---|---|---|---|
+| 1% | +32% | +6.4% | -3.1% | -5.7% | 0.0% |
+| 2% | +64% | +12.9% | -5.5% | -10.6% | 0.0% |
+| 3% | +96% | +19.3% | -7.6% | -15.0% | 0.9% |
+| 4% | +128% | +25.8% | -9.4% | -19.0% | 4.0% |
+| 5% | +159% | +32.2% | -11.1% | -22.8% | 8.8% |
+| 6% | +191% | +38.6% | -12.6% | -26.5% | 15.1% |
+
+(Sequencing luck only - not the risk that the true edge is smaller than measured.)
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
