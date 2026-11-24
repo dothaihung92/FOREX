@@ -2057,6 +2057,26 @@ The only lever that raises profit without lowering ret/DD is risk per trade
 
 (Sequencing luck only - not the risk that the true edge is smaller than measured.)
 
+### Risk 6-10% per trade (`scripts/experiments/high_risk_test.py`)
+
+Real backtester, $10,000 fixed base, full costs, EA rules (daily loss limit 3% of base):
+
+| Risk | 5-yr return | Per year | Max DD | 2020-22 | 2023-25 |
+|---|---|---|---|---|---|
+| 2% | +64% | +12.9% | -7.8% | +27% | +37% |
+| 5% | +160% | +32.2% | -18.9% | +68% | +91% |
+| 6% | +194% | +39.2% | -22.5% | +84% | +110% |
+| 8% | +258% | +52.2% | -29.4% | +112% | +146% |
+| 10% | +323% | +65.3% | -36.1% | +141% | +183% |
+
+Return and historical drawdown both scale linearly. Bootstrap 95th-percentile drawdown:
+-26% at 6%, -33% at 8%, -40% at 10%. **If the true edge is half the measured one**, the
+95th-percentile drawdown becomes -49% at 6% and -75% at 10%, with an 11-19% chance of a
+drawdown beyond 50% at 8-10%. With fixed-capital sizing every loss is a fixed slice of the
+base, so a drawdown raises the effective risk on what is left: at 10%, ten straight losses
+(about a 1% chance in five years at the measured 43% loss rate) erase the base entirely.
+The longest losing streak on record is 5 trades = -50% of the base at 10%.
+
 ### Verdict
 
 Do not run this on a live account. The defects above are fixable, but the
